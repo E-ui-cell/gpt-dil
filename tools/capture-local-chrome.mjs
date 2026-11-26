@@ -192,6 +192,9 @@ async function recordRequest(request) {
     requestContentType: contentType || null,
   };
 
+  network.push(record);
+  requestRecords.set(request, record);
+
   try {
     record.requestHeaderNames = Object.keys(await request.allHeaders()).sort();
   } catch {}
@@ -205,9 +208,6 @@ async function recordRequest(request) {
   } catch (error) {
     record.requestBodyError = redactText(error?.message || error);
   }
-
-  network.push(record);
-  requestRecords.set(request, record);
 }
 
 async function recordResponse(response) {
