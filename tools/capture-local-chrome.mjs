@@ -303,6 +303,8 @@ async function recordResponse(response) {
   }
 
   try {
+    const body = await response.body();
+    record.responseBytes = body.length;
     record.responseBody = isTextResponse
       ? await saveBody("responses", record.id, body, contentType)
       : await saveBinaryResponse(record.id, body, contentType);
