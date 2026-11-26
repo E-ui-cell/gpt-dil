@@ -25,6 +25,8 @@ Actions artifacts are retained for 14 days. Release assets remain until deleted.
 
 The cloud browser is fresh and unauthenticated. Each browser engine sends one fixed, harmless anonymous test prompt per run to exercise the conversation request and response stream; no account is used and no user-provided text is sent. Credential-like fields, cookies, authorization values, email addresses and account/device identifiers are redacted before publishing. Multipart values, file contents and binary WebSocket payloads are not exported. It cannot see your ChatGPT account traffic.
 
+Capture is bounded rather than literally unlimited: JSON/text responses are capped at 6 MiB, completed event streams at 24 MiB and 45 seconds, request bodies at 4 MiB, protocol payload output at 3,000 records/64 MiB, and static assets at 600 files/300 MiB total. WebSocket text frames are capped at 256 KiB and 100 sent/200 received frames per connection. The exact limits are recorded in each `capture.json`.
+
 See [protocol notes](protocol-notes.md) for the first endpoint, authentication, streaming, upload and voice findings.
 
 ## LOCAL AUTHENTICATED CAPTURE
