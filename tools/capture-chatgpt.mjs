@@ -281,7 +281,7 @@ function summarizeEventStream(body) {
   let eventCount = 0;
   let doneMarker = false;
 
-  for (const line of text.split(/\\r?\\n/)) {
+  for (const line of text.split(/\r?\n/)) {
     if (line.startsWith("event:")) {
       currentEvent = line.slice(6).trim() || "message";
       continue;
@@ -398,7 +398,7 @@ async function processStaticResponse(response, record) {
   }
 
   const isEventStream =
-    /text\\/event-stream|application\\/x-ndjson/i.test(contentType);
+    /text\/event-stream|application\/x-ndjson/i.test(contentType);
 
   if (!isStatic && isEventStream) {
     const declaredLength = Number(headers["content-length"] || 0);
@@ -927,7 +927,7 @@ async function main() {
       apiResponseBodies: "JSON and streaming-event structure only; values omitted; other bodies not collected",
       websocketFrames: "frame sizes and JSON shapes only; values omitted",
       conversationText: "not collected",
-      browserStorage: "not read",
+      browserStorage: "key names and database names only; values not read",
       rawHar: "not generated",
     },
   };
