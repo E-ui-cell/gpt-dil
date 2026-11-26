@@ -162,11 +162,11 @@ function inspectRequestBody(request) {
 
 function addEndpointCandidates(text) {
   const pattern =
-    /["'`]((?:\\/backend-api\\/|\\/backend-anon\\/|\\/(?:api|graphql|ces|unauth-mweb)\\/)[^"'\`\\s\\\\]*)["'`]/g;
+    /["'`]((?:\/backend-api\/|\/backend-anon\/|\/(?:api|graphql|ces|unauth-mweb)\/)[^"'`\s\\]*)["'`]/g;
 
   for (const match of text.matchAll(pattern)) {
     const endpoint = match[1].replace(/\\\\u002f/gi, "/").slice(0, 500);
-    if (/^\\/unauth-mweb\\/(?:assets|images|scripts)\\//.test(endpoint)) continue;
+    if (endpoint.startsWith("/unauth-mweb/assets/") || endpoint.startsWith("/unauth-mweb/images/") || endpoint.startsWith("/unauth-mweb/scripts/")) continue;
     endpointCandidates.add(endpoint);
   }
 }
