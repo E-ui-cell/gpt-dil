@@ -167,8 +167,13 @@ async function recordRequest(request) {
   const id = ++sequence;
   const url = safeUrl(request.url());
   const contentType = requestContentType(request);
+  let frameUrl = null;
+  try {
+    frameUrl = safeUrl(request.frame().url());
+  } catch {}
   const record = {
     id,
+    frameUrl,
     at: new Date().toISOString(),
     elapsedMs: Date.now() - startedAt.getTime(),
     type: "request",
