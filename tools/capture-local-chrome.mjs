@@ -586,8 +586,9 @@ async function writeReport() {
       localAndSessionStorageValues: "never recorded; key names only",
       indexedDBValues: "never recorded; database names and versions only",
       requestAndResponseBodies: "captured with credential-like JSON fields redacted",
-      dilBridgePayloads: "Window, MessagePort, Worker, SharedWorker and BroadcastChannel messages captured in both directions with sensitive fields redacted",
+      dilBridgePayloads: "Window, MessagePort, Worker, SharedWorker, ServiceWorker and BroadcastChannel messages captured in both directions with sensitive fields redacted",
       conversationContent: "included; this folder is private and must not be uploaded publicly",
+      frameSnapshots: "main page and accessible iframe DOM snapshots; scripts and form values removed",
       multipartValuesAndFileContents: "not recorded",
     },
   };
