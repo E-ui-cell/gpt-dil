@@ -13,15 +13,17 @@ Actions artifacts are retained for 14 days. Release assets remain until deleted.
 - Public ChatGPT DOM snapshot with inline scripts and sensitive attributes removed
 - JavaScript, CSS, static JSON assets and exposed source maps
 - Request URLs, methods, query parameter names, resource types, status codes and timings
-- JSON request and response schemas, without values
-- Streaming response event names and JSON shapes, without values
-- A fixed anonymous test turn's request/response schema and completion markers
-- WebSocket connection metadata, frame sizes and JSON shapes, without values
+- Sanitized first-party JSON/text request bodies, including anonymous probe payloads
+- Sanitized JSON, text, SSE and NDJSON response bodies, including non-2xx error responses
+- Event names, event ordering, completion markers and payload structure for completed streams
+- Sanitized WebSocket text/JSON frames; binary frames are represented by size and SHA-256
+- JavaScript, CSS, static data and exposed source maps, with SHA-256 asset indexing
 - Script URLs, hashes, source-map references and executed function ranges
 - Chromium performance metrics, script coverage, resource timing and browser errors
-- Local/session storage key names, IndexedDB database names and service-worker scopes
+- DOM snapshots for the main page and every accessible iframe, including the DIL frame
+- Dedicated/service worker URLs, local/session storage key names, IndexedDB names and service-worker scopes
 
-The cloud browser is fresh and unauthenticated. Linux Firefox sends one fixed, harmless anonymous test prompt per run to exercise the real conversation request and response stream; no account is used and no user-provided text is sent. It cannot see your ChatGPT account traffic.
+The cloud browser is fresh and unauthenticated. Each browser engine sends one fixed, harmless anonymous test prompt per run to exercise the conversation request and response stream; no account is used and no user-provided text is sent. Credential-like fields, cookies, authorization values, email addresses and account/device identifiers are redacted before publishing. Multipart values, file contents and binary WebSocket payloads are not exported. It cannot see your ChatGPT account traffic.
 
 See [protocol notes](protocol-notes.md) for the first endpoint, authentication, streaming, upload and voice findings.
 
