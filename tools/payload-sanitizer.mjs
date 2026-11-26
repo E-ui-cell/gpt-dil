@@ -1,5 +1,14 @@
 const SECRET_KEY = /token|secret|password|passwd|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|api.?key|email|username|sentinel|session|auth|bearer|jwt|phone|device.?id|user.?id|account.?id|ip.?address/i;
 
+function safePayloadKey(key) {
+  const value = String(key);
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value)) return "[EMAIL-KEY]";
+  if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value)) return "[UUID-KEY]";
+  if (/^[A-Za-z0-9_-]{40,}$/.test(value)) return "[OPAQUE-KEY]";
+  return value;
+}
+
+
 export function sanitizeText(value) {
   return String(value ?? "")
     .replace(/Bearer\s+[^\s"'<>]+/gi, "Bearer [REDACTED]")
@@ -7,6 +16,7 @@ export function sanitizeText(value) {
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g, "[JWT]")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL]")
     .replace(/([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|signature|sig|session[_-]?proof|session[_-]?id|proof|auth)=)[^&#\s]+/gi, "$1[REDACTED]")
+    .replace(/\b((?:access[_-]?token|refresh[_-]?token|id[_-]?token|prepare[_-]?token|conduit[_-]?token|session[_-]?proof|session[_-]?id|api[_-]?key|client[_-]?secret|authorization|cookie|csrf|xsrf|sentinel|proof|signature|password|secret|token|user[_-]?id|account[_-]?id|device[_-]?id)\s*[:=]\s*)["']?[^,\s"']+/gi, "$1[REDACTED]")
     .replace(/(["'][^"']*(?:token|secret|password|passwd|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|api.?key|email|username|sentinel|session|auth|bearer|jwt|phone|device.?id|user.?id|account.?id|ip.?address)[^"']*["']\s*:\s*["'])[^"']*(["'])/gi, "$1[REDACTED]$2");
 }
 
@@ -21,7 +31,7 @@ export function sanitizePayload(value, depth = 0) {
     const output = {};
     const entries = Object.entries(value);
     for (const [key, item] of entries.slice(0, 1000)) {
-      output[key] = SECRET_KEY.test(key) ? "[REDACTED]" : sanitizePayload(item, depth + 1);
+      output[safePayloadKey(key)] = SECRET_KEY.test(key) ? "[REDACTED]" : sanitizePayload(item, depth + 1);
     }
     if (entries.length > 1000) output.__truncatedKeys = entries.length - 1000;
     return output;
@@ -46,7 +56,7 @@ export function sanitizeProtocolBody(raw, contentType = "") {
   if (/application\/x-www-form-urlencoded/i.test(contentType)) {
     const fields = {};
     for (const [key, value] of new URLSearchParams(text)) {
-      fields[key] = SECRET_KEY.test(key) ? "[REDACTED]" : sanitizeText(value);
+      fields[safePayloadKey(key)] = SECRET_KEY.test(key) ? "[REDACTED]" : sanitizeText(value);
     }
     return { kind: "form-urlencoded", fields };
   }
