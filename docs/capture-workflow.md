@@ -23,6 +23,8 @@ Actions artifacts are retained for 14 days. Release assets remain until deleted.
 
 The cloud browser is fresh and unauthenticated. Linux Firefox sends one fixed, harmless anonymous test prompt per run to exercise the real conversation request and response stream; no account is used and no user-provided text is sent. It cannot see your ChatGPT account traffic.
 
+See [protocol notes](protocol-notes.md) for the first endpoint, authentication, streaming, upload and voice findings.
+
 ## LOCAL AUTHENTICATED CAPTURE
 
 Run this on Windows from the repository or installed GPT-DIL folder:
