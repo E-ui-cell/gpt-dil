@@ -14,6 +14,7 @@ const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_DIL_BRIDGE_EVENTS = 50000;
 const MAX_DIL_BRIDGE_LOG_BYTES = 64 * 1024 * 1024;
 const MAX_DIL_BRIDGE_EVENT_BYTES = 256 * 1024;
+const MAX_FINALIZE_WAIT_MS = 15000;
 const ALLOWED_HOSTS = ["chatgpt.com", "openai.com", "oaiusercontent.com", "oaistatic.com"];
 
 const startedAt = new Date();
@@ -397,6 +398,71 @@ async function savePageSnapshot(page, reason) {
     const directory = path.join(OUTPUT_DIR, "snapshots");
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, number + ".html"), snapshot.html, "utf8");
+
+    const frameSnapshots = [];
+    for (const [index, frame] of page.frames().entries()) {
+      if (index === 0) continue;
+      try {
+        const frameState = await frame.evaluate(() => {
+          const clone = document.documentElement.cloneNode(true);
+          clone.querySelectorAll("script").forEach((script) => script.remove());
+          clone.querySelectorAll("input, textarea, select").forEach((field) => {
+            if ("value" in field) field.value = "";
+            field.removeAttribute("value");
+            field.removeAttribute("checked");
+            field.removeAttribute("selected");
+            field.textContent = "";
+          });
+          clone.querySelectorAll(
+            'meta[name*="token" i], meta[name*="csrf" i], meta[property*="token" i]',
+          ).forEach((meta) => meta.remove());
+          clone.querySelectorAll("*").forEach((element) => {
+            for (const attribute of [...element.attributes]) {
+              if (/^(?:nonce|value|.*authorization.*|data-.*(?:token|session|csrf))$/i.test(attribute.name)) {
+                element.removeAttribute(attribute.name);
+              }
+            }
+            for (const name of ["src", "href"]) {
+              const value = element.getAttribute(name);
+              if (!value) continue;
+              try {
+                const url = new URL(value, location.href);
+                element.setAttribute(name, url.origin + url.pathname);
+              } catch {}
+            }
+          });
+          return {
+            title: document.title,
+            url: location.origin + location.pathname,
+            readyState: document.readyState,
+            scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
+            html: "<!doctype html>" + clone.outerHTML,
+          };
+        });
+        const filename = number + "-frame-" + String(index).padStart(2, "0") + ".html";
+        await writeFile(path.join(directory, filename), frameState.html, "utf8");
+        frameSnapshots.push({
+          index,
+          name: frame.name(),
+          parentUrl: frame.parentFrame() ? safeUrl(frame.parentFrame().url()) : null,
+          url: safeUrl(frameState.url),
+          title: frameState.title,
+          readyState: frameState.readyState,
+          scripts: frameState.scripts.map(safeUrl),
+          html: path.posix.join("snapshots", filename),
+        });
+      } catch (error) {
+        frameSnapshots.push({
+          index,
+          name: frame.name(),
+          url: safeUrl(frame.url()),
+          error: redactText(error?.message || error),
+        });
+      }
+    }
+
+    snapshot.frames = frameSnapshots;
+    snapshot.workers = page.workers().map((worker) => safeUrl(worker.url()));
     delete snapshot.html;
     snapshot.url = safeUrl(snapshot.url);
     snapshot.scripts = snapshot.scripts.map(safeUrl);
@@ -501,8 +567,31 @@ function attachPage(page) {
   });
 }
 
+async function waitForPending(timeoutMs = MAX_FINALIZE_WAIT_MS) {
+  const tasks = [...pending];
+  if (!tasks.length) return { settled: true, pending: 0 };
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  const settled = await Promise.race([
+    Promise.allSettled(tasks).then(() => true),
+    timeout,
+  ]);
+  clearTimeout(timer);
+  return { settled, pending: pending.size };
+}
+
 async function writeReport() {
-  await Promise.allSettled([...pending]);
+  const drain = await waitForPending();
+  if (!drain.settled) {
+    consoleEvents.push({
+      type: "finalize-timeout",
+      pendingTasks: drain.pending,
+      waitMs: MAX_FINALIZE_WAIT_MS,
+      at: new Date().toISOString(),
+    });
+  }
   await mkdir(OUTPUT_DIR, { recursive: true });
 
   let cookies = [];
@@ -545,6 +634,9 @@ async function writeReport() {
     dilBridgeDroppedMessages: dilBridgeDroppedEvents,
     dilBridgeLogBytes: dilBridgeLogBytes,
     pagesObserved: pages.size,
+    framesObserved: [...pages].reduce((sum, page) => sum + (page.isClosed() ? 0 : page.frames().length), 0),
+    workersObserved: [...pages].reduce((sum, page) => sum + (page.isClosed() ? 0 : page.workers().length), 0),
+    pendingTasksAtFinalize: pending.size,
     privacy: {
       outputIsLocalOnly: true,
       authorizationAndCookieHeaderValues: "never recorded",
@@ -572,7 +664,7 @@ async function writeReport() {
       "Multipart upload file contents and other binary request bodies are not recorded.",
       "websockets/: sent and received WebSocket frames",
       "dil-bridge.jsonl: DIL frame/worker/MessagePort messages in both directions; sensitive fields redacted",
-      "snapshots/: sanitized DOM snapshots and browser/storage metadata",
+      "snapshots/: sanitized DOM snapshots for the main page and accessible iframes, plus browser/storage metadata",
       "network.json: request/response index and timing",
       "websockets.json: WebSocket connection summary",
       "cookies-metadata.json: cookie names and attributes only; no values",
