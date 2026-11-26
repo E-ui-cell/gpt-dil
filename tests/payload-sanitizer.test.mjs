@@ -25,9 +25,9 @@ test("redacts bearer, JWT, API key and token query values in text", () => {
   const input = "Bearer abc.def sk-abcdefghijk https://chatgpt.com/?access_token=secret";
   const output = sanitizeText(input);
 
-  assert.doesNotMatch(output, /abc\\.def|sk-abcdefghijk|access_token=secret/);
-  assert.match(output, /Bearer \\[REDACTED\\]/);
-  assert.match(output, /access_token=\\[REDACTED\\]/);
+  assert.doesNotMatch(output, /abc\.def|sk-abcdefghijk|access_token=secret/);
+  assert.match(output, /Bearer \[REDACTED\]/);
+  assert.match(output, /access_token=\[REDACTED\]/);
 });
 
 test("sanitizes JSON event-stream data while preserving event order and done marker", () => {
@@ -38,13 +38,13 @@ test("sanitizes JSON event-stream data while preserving event order and done mar
     "event: done",
     "data: [DONE]",
     "",
-  ].join("\\n");
+  ].join("\n");
   const output = sanitizeProtocolBody(input, "text/event-stream");
 
   assert.match(output, /event: message/);
-  assert.match(output, /"session_token":"\\[REDACTED\\]"/);
+  assert.match(output, /"session_token":"\[REDACTED\]"/);
   assert.match(output, /"text":"hello"/);
-  assert.match(output, /data: \\[DONE\\]/);
+  assert.match(output, /data: \[DONE\]/);
   assert.doesNotMatch(output, /private/);
 });
 
@@ -57,7 +57,7 @@ test("captures form field names but never multipart values or file contents", ()
     "Content-Type: text/plain",
     "",
     "private file content",
-  ].join("\\r\\n");
+  ].join("\r\n");
   const output = sanitizeProtocolBody(input, "multipart/form-data; boundary=abc");
 
   assert.equal(output.kind, "multipart-metadata");
@@ -84,11 +84,11 @@ test("redacts sensitive URL-encoded fields", () => {
 
 test("sanitizes NDJSON records that do not use SSE data prefixes", () => {
   const output = sanitizeProtocolBody(
-    '{"type":"patch","session_id":"private","value":"visible"}\\n{"type":"done"}',
+    '{"type":"patch","session_id":"private","value":"visible"}\n{"type":"done"}',
     "application/x-ndjson",
   );
 
-  assert.match(output, /"session_id":"\\[REDACTED\\]"/);
+  assert.match(output, /"session_id":"\[REDACTED\]"/);
   assert.match(output, /"value":"visible"/);
   assert.doesNotMatch(output, /private/);
 });
