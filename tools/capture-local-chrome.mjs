@@ -139,7 +139,7 @@ async function saveBody(kind, id, raw, contentType) {
   const directory = path.join(OUTPUT_DIR, kind);
   await mkdir(directory, { recursive: true });
 
-  if (extension === "bin") {
+  if (extension === "bin" && !/multipart\\/form-data/i.test(contentType)) {
     return { skipped: "binary-body-not-exported", bytes: buffer.length };
   }
 
