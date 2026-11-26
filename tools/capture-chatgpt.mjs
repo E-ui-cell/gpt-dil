@@ -710,7 +710,7 @@ async function main() {
   await Promise.allSettled([...pendingResponses]);
 
   try {
-    pageState = await page.evaluate(() => ({
+    pageState = await page.evaluate(async () => ({
       title: document.title,
       url: location.origin + location.pathname,
       readyState: document.readyState,
