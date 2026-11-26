@@ -616,6 +616,17 @@ async function main() {
         "etag",
         "server",
         "date",
+        "x-request-id",
+        "x-openai-request-id",
+        "cf-ray",
+        "retry-after",
+        "server-timing",
+        "x-ratelimit-limit-requests",
+        "x-ratelimit-remaining-requests",
+        "x-ratelimit-reset-requests",
+        "x-ratelimit-limit-tokens",
+        "x-ratelimit-remaining-tokens",
+        "x-ratelimit-reset-tokens",
       ]) {
         if (headers[name]) record.responseHeaders[name] = headers[name];
       }
@@ -865,6 +876,10 @@ async function main() {
     JSON.stringify(preciseCoverage, null, 2),
   );
   await writeFile(
+    path.join(OUTPUT_DIR, "scripts.json"),
+    JSON.stringify([...scriptRecords.values()], null, 2),
+  );
+  await writeFile(
     path.join(OUTPUT_DIR, "browser-metrics.json"),
     JSON.stringify(browserMetrics, null, 2),
   );
@@ -952,6 +967,7 @@ async function main() {
       "- payload-shapes.json: JSON request structure without values",
       "- response-shapes.json: JSON response structure without values",
       "- websockets.json: WebSocket frame counts, sizes and JSON shapes",
+      "- scripts.json: all scripts observed by the Chrome debugger",
       "- script-coverage.json: executed script/function ranges and script hashes",
       "- browser-metrics.json: Chromium performance metrics",
       "- endpoints.json: endpoint-like strings extracted from frontend code",
