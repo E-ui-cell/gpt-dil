@@ -1,20 +1,17 @@
-*.py[co]
+# Windows
+Thumbs.db
+Desktop.ini
 
-# Default development database
-devdata.db
+# Editors
+.vscode/
+.idea/
 
-# Default data directory
-data/*
+# Build output
+dist/
+build/
+*.zip
 
-# Packages
-*.egg
-*.egg-info
-dist
-build
-
-# Installer logs
-pip-log.txt
-
-# Unit test / coverage reports
-.coverage
-.tox
+# Temporary files and logs
+*.tmp
+*.bak
+*.log

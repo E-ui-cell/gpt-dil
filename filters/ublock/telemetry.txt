@@ -1,0 +1,9 @@
+! Title: GPT-DIL - Telemetry
+! Description: Optional ChatGPT telemetry endpoint filters.
+! Homepage: https://github.com/E-ui-cell/gpt-dil
+! Expires: 7 days
+
+||chatgpt.com/ces/v1/telemetry/intake$method=POST
+||chatgpt.com/ces/v1/rgstr$method=POST
+||chatgpt.com/ces/statsc/flush$method=POST
+||bzr.openai.com/v1/obi/sync$method=POST
