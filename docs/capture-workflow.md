@@ -47,7 +47,7 @@ Local capture includes:
 - Completed text/event-stream responses and their event data
 - Selected image, audio, video, PDF and binary responses (32 MB per response limit)
 - Sent and received WebSocket text frames
-- DIL frame, MessagePort, Worker, SharedWorker and BroadcastChannel messages in both directions, with sensitive fields redacted
+- DIL frame, MessagePort, Worker, SharedWorker, ServiceWorker and BroadcastChannel messages in both directions, with sensitive fields redacted
 - Request/response status, headers names, content types and timings
 - Sanitized DOM snapshots for the main page and accessible iframes, resource lists and browser diagnostics
 - Cookie names/attributes, storage key names and IndexedDB database names
