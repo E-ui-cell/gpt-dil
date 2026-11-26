@@ -242,6 +242,8 @@ function isStaticTextAsset(rawUrl, contentType, resourceType) {
   const pathname = url.pathname.toLowerCase();
   if (
     pathname.startsWith("/backend-api/") ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next/data/") ||
     pathname.startsWith("/ces/") ||
     pathname.includes("/graphql")
   ) {
