@@ -19,6 +19,7 @@ Actions artifacts are retained for 14 days. Release assets remain until deleted.
 - Sanitized WebSocket text/JSON frames; binary frames are represented by size and SHA-256
 - JavaScript, CSS, static data and exposed source maps, with SHA-256 asset indexing
 - Script URLs, hashes, source-map references and executed function ranges
+- Bundle analysis of DIL symbols, endpoint references and source-map source names
 - Chromium performance metrics, script coverage, resource timing and browser errors
 - DOM snapshots for the main page and every accessible iframe, including the DIL frame
 - Dedicated/service worker URLs, local/session storage key names, IndexedDB names and service-worker scopes
