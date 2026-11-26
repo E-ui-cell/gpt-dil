@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
+import { sanitizePayload, sanitizeProtocolBody, sanitizeText as sanitizePayloadText } from "./payload-sanitizer.mjs";
 
 const TARGET_URL = "https://chatgpt.com/";
 const BROWSER_NAME = process.env.GPT_DIL_BROWSER || "chromium";
@@ -23,6 +24,8 @@ const MAX_SOURCE_MAPS = 200;
 const MAX_JSON_RESPONSE_BYTES = 6 * 1024 * 1024;
 const MAX_EVENT_STREAM_BYTES = 24 * 1024 * 1024;
 const MAX_REQUEST_SHAPE_BYTES = 4 * 1024 * 1024;
+const MAX_PROTOCOL_PAYLOADS = 3000;
+const MAX_PROTOCOL_PAYLOAD_BYTES = 64 * 1024 * 1024;
 const ALLOWED_ASSET_HOSTS = [
   "chatgpt.com",
   "openai.com",
@@ -40,6 +43,8 @@ const sourceMapCandidates = new Map();
 const assetByHash = new Map();
 const pendingResponses = new Set();
 const requestRecords = new WeakMap();
+const protocolPayloads = [];
+let protocolPayloadBytes = 0;
 
 let browser;
 let totalAssetBytes = 0;
@@ -179,6 +184,32 @@ function inspectRequestBody(request) {
   } catch {
     return { kind: "non-json", bytes };
   }
+}
+
+function storeProtocolPayload(direction, record, contentType, rawBytes, payload) {
+  if (protocolPayloads.length >= MAX_PROTOCOL_PAYLOADS) {
+    record.protocolPayloadSkipped = "payload-count-limit";
+    return;
+  }
+
+  const entry = {
+    direction,
+    requestId: record.requestId ?? null,
+    method: record.method,
+    url: record.url,
+    status: record.status ?? null,
+    contentType: contentType || null,
+    rawBytes,
+    payload,
+  };
+  const serializedBytes = Buffer.byteLength(JSON.stringify(entry), "utf8");
+  if (protocolPayloadBytes + serializedBytes > MAX_PROTOCOL_PAYLOAD_BYTES) {
+    record.protocolPayloadSkipped = "payload-byte-limit";
+    return;
+  }
+
+  protocolPayloads.push(entry);
+  protocolPayloadBytes += serializedBytes;
 }
 
 function addEndpointCandidates(text) {
@@ -349,19 +380,26 @@ function summarizeEventStream(body) {
 function summarizeWebSocketFrame(frame) {
   const payload = frame?.payload;
   if (Buffer.isBuffer(payload)) {
-    return { type: "binary", bytes: payload.length };
+    return {
+      type: "binary",
+      bytes: payload.length,
+      sha256: createHash("sha256").update(payload).digest("hex"),
+    };
   }
   const value = String(payload ?? "");
   try {
+    const parsed = JSON.parse(value);
     return {
       type: "json",
       bytes: Buffer.byteLength(value, "utf8"),
-      shape: describeShape(JSON.parse(value)),
+      shape: describeShape(parsed),
+      payload: sanitizePayload(parsed),
     };
   } catch {
     return {
       type: "text",
       bytes: Buffer.byteLength(value, "utf8"),
+      payload: sanitizePayloadText(value),
     };
   }
 }
@@ -416,6 +454,13 @@ async function processStaticResponse(response, record) {
         bytes: body.length,
         shape: describeShape(parsed),
       };
+      storeProtocolPayload(
+        "response",
+        record,
+        contentType,
+        body.length,
+        sanitizeProtocolBody(body, contentType),
+      );
     } catch {
       record.responseBody = {
         kind: "json-unparsed",
@@ -449,6 +494,35 @@ async function processStaticResponse(response, record) {
       return;
     }
     record.responseBody = summarizeEventStream(body);
+    storeProtocolPayload(
+      "response",
+      record,
+      contentType,
+      body.length,
+      sanitizeProtocolBody(body, contentType),
+    );
+    return;
+  }
+
+  if (!isStatic && /text\\/(?:plain|xml)|application\\/xml/i.test(contentType)) {
+    const declaredLength = Number(headers["content-length"] || 0);
+    if (declaredLength > MAX_JSON_RESPONSE_BYTES) {
+      record.responseBody = { kind: "text", skipped: "over-size-limit", bytes: declaredLength };
+      return;
+    }
+    const body = await response.body();
+    if (!body.length || body.length > MAX_JSON_RESPONSE_BYTES) {
+      record.responseBody = { kind: "text", skipped: "empty-or-over-size-limit", bytes: body.length };
+      return;
+    }
+    record.responseBody = { kind: "text", bytes: body.length };
+    storeProtocolPayload(
+      "response",
+      record,
+      contentType,
+      body.length,
+      sanitizeProtocolBody(body, contentType),
+    );
     return;
   }
 
@@ -720,7 +794,22 @@ async function main() {
     };
 
     const body = inspectRequestBody(request);
-    if (body) record.requestBody = body;
+    if (body) {
+      record.requestBody = body;
+      if (body.kind !== "omitted") {
+        const rawBody = request.postData();
+        if (rawBody != null) {
+          const contentType = request.headers()["content-type"] || "";
+          storeProtocolPayload(
+            "request",
+            record,
+            contentType,
+            Buffer.byteLength(rawBody, "utf8"),
+            sanitizeProtocolBody(rawBody, contentType),
+          );
+        }
+      }
+    }
 
     network.push(record);
     requestRecords.set(request, record);
@@ -789,18 +878,18 @@ async function main() {
       openedAtMs: Date.now() - startedAt.getTime(),
       sentFrames: 0,
       receivedFrames: 0,
-      sentShapes: [],
-      receivedShapes: [],
+      sentPayloads: [],
+      receivedPayloads: [],
     };
     websocketRecords.push(entry);
 
     socket.on("framesent", (frame) => {
       entry.sentFrames++;
-      if (entry.sentShapes.length < 100) entry.sentShapes.push(summarizeWebSocketFrame(frame));
+      if (entry.sentPayloads.length < 100) entry.sentPayloads.push(summarizeWebSocketFrame(frame));
     });
     socket.on("framereceived", (frame) => {
       entry.receivedFrames++;
-      if (entry.receivedShapes.length < 200) entry.receivedShapes.push(summarizeWebSocketFrame(frame));
+      if (entry.receivedPayloads.length < 200) entry.receivedPayloads.push(summarizeWebSocketFrame(frame));
     });
     socket.on("close", () => {
       entry.closedAtMs = Date.now() - startedAt.getTime();
@@ -992,6 +1081,12 @@ async function main() {
       2,
     ),
   );
+  await writeFile(
+    path.join(OUTPUT_DIR, "protocol-payloads.jsonl"),
+    protocolPayloads.map((entry) => JSON.stringify(entry)).join("\\n") +
+      (protocolPayloads.length ? "\\n" : ""),
+    "utf8",
+  );
   for (const entry of network) {
     try {
       const parsed = new URL(entry.url);
@@ -1092,6 +1187,8 @@ async function main() {
       assetsSaved: assetByHash.size,
       assetBytes: totalAssetBytes,
       consoleEvents: consoleEvents.length,
+      protocolPayloads: protocolPayloads.length,
+      protocolPayloadBytes,
     },
     privacy: {
       authenticatedSessionUsed: false,
@@ -1099,9 +1196,9 @@ async function main() {
       authorizationHeadersExported: false,
       requestHeadersExported: false,
       responseHeaders: "allowlisted metadata only; Set-Cookie excluded",
-      requestBodies: "JSON structure and value types only; values omitted",
-      apiResponseBodies: "JSON and streaming-event structure only; values omitted; other bodies not collected",
-      websocketFrames: "frame sizes and JSON shapes only; values omitted",
+      requestBodies: "sanitized JSON/text values; credential-like fields redacted; multipart values and file contents omitted",
+      apiResponseBodies: "sanitized JSON/text and completed event-stream data; credential-like fields redacted",
+      websocketFrames: "sanitized JSON/text payloads; binary frames represented by size and SHA-256 only",
       conversationText: "no user conversation; fixed anonymous probe text may appear in sanitized DOM snapshots",
       browserStorage: "key names and database names only; values not read",
       rawHar: "not generated",
@@ -1118,18 +1215,19 @@ async function main() {
       "GPT-DIL ChatGPT public frontend capture",
       "",
       "This run used a fresh, unauthenticated browser context.",
-      "Network records contain URL paths, methods, statuses and payload shapes only.",
+      "Network records contain sanitized request/response payload values and metadata.",
       "Static frontend assets and exposed source maps may be included.",
-      "No cookies, authorization headers, raw request bodies, raw API response bodies,",
-      "browser storage values or user conversation text were exported. JSON/SSE/WebSocket shapes only.",
+      "Credential-like fields, cookies, authorization values, email addresses and token strings are redacted.",
+      "Multipart values and file contents are omitted. Binary WebSocket frames are represented by size and SHA-256.",
       "The fixed anonymous probe text may appear in sanitized DOM snapshots.",
       "A fixed anonymous protocol probe may be sent when enabled; no account is used.",
       "",
       "Files:",
       "- network.json: sanitized request/response metadata",
-      "- payload-shapes.json: JSON request structure without values",
-      "- response-shapes.json: JSON response structure without values",
-      "- websockets.json: WebSocket frame counts, sizes and JSON shapes",
+      "- payload-shapes.json: request payload structure",
+      "- response-shapes.json: response payload structure",
+      "- protocol-payloads.jsonl: sanitized request/response values and completed stream data",
+      "- websockets.json: sanitized WebSocket text/JSON payloads and binary frame hashes",
       "- scripts.json: all scripts observed by the Chrome debugger",
       "- script-coverage.json: executed script/function ranges and script hashes",
       "- browser-metrics.json: Chromium performance metrics",
