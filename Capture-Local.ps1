@@ -36,14 +36,60 @@ if ([version]$NodeVersionText -lt [version]"22.0") {
     throw "Node.js 22 or newer is required. Current version: $NodeVersionText"
 }
 
-# Refuse to attach to, or interfere with, another process using this CDP port.
-$Existing = $null
-try {
-    $Existing = Invoke-RestMethod -Uri $DebugUrl -TimeoutSec 2
-} catch {}
-if ($Existing) {
-    throw "Port $Port is already serving a Chrome DevTools endpoint. Close that browser instance or change the port in this script."
+# Reuse the capture browser left running by a previous attempt when it uses
+# this exact profile. Otherwise choose an unused localhost debugging port.
+$BrowserAlreadyRunning = $false
+$Port = $null
+
+for ($CandidatePort = 9222; $CandidatePort -le 9299; $CandidatePort++) {
+    $CandidateUrl = "http://127.0.0.1:$CandidatePort/json/version"
+    $Endpoint = $null
+    try {
+        $Endpoint = Invoke-RestMethod -Uri $CandidateUrl -TimeoutSec 2
+    } catch {}
+
+    if ($Endpoint) {
+        # Do not attach to an unrelated browser or another local debugging service.
+        $MatchingProcess = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.ExecutablePath -and
+                $_.ExecutablePath -ieq $Chrome -and
+                $_.CommandLine -and
+                $_.CommandLine.IndexOf($Profile, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                $_.CommandLine.IndexOf("--remote-debugging-port=$CandidatePort", [StringComparison]::OrdinalIgnoreCase) -ge 0
+            } |
+            Select-Object -First 1
+
+        if ($MatchingProcess) {
+            $Port = $CandidatePort
+            $BrowserAlreadyRunning = $true
+            Write-Host "Reusing the existing GPT-DIL Supermium session on port $Port."
+            break
+        }
+
+        Write-Host "Port $CandidatePort is occupied by another process; checking the next port." -ForegroundColor Yellow
+        continue
+    }
+
+    # Probe whether a non-DevTools process has bound the port.
+    $Listener = $null
+    try {
+        $Listener = New-Object System.Net.Sockets.TcpListener([Net.IPAddress]::Loopback, $CandidatePort)
+        $Listener.Start()
+        $Listener.Stop()
+        $Port = $CandidatePort
+        break
+    } catch {
+        if ($Listener) {
+            try { $Listener.Stop() } catch {}
+        }
+    }
 }
+
+if ($null -eq $Port) {
+    throw "No free remote-debugging port was found between 9222 and 9299."
+}
+$DebugUrl = "http://127.0.0.1:$Port/json/version"
 
 New-Item -ItemType Directory -Force -Path $DataRoot, $Profile, $Output, $NpmCache | Out-Null
 
@@ -68,7 +114,9 @@ $Arguments = @(
     "--no-default-browser-check",
     "about:blank"
 )
-Start-Process -FilePath $Chrome -ArgumentList $Arguments
+if (-not $BrowserAlreadyRunning) {
+    Start-Process -FilePath $Chrome -ArgumentList $Arguments
+}
 
 $Ready = $false
 for ($i = 0; $i -lt 60; $i++) {
@@ -99,13 +147,18 @@ try {
     $env:GPT_DIL_LOCAL_OUTPUT_DIR = $Output
 
     $NodeLog = Join-Path $DataRoot "capture-node.log"
-    Remove-Item -LiteralPath $NodeLog -Force -ErrorAction SilentlyContinue
+    $NodeErrorLog = Join-Path $DataRoot "capture-node-stderr.log"
+    Remove-Item -LiteralPath $NodeLog, $NodeErrorLog -Force -ErrorAction SilentlyContinue
     Write-Host "Node diagnostics: $NodeLog"
-    & $Node.Source (Join-Path $RepoRoot "tools\capture-local-chrome.mjs") 2>&1 |
+    Write-Host "Node stderr:      $NodeErrorLog"
+    & $Node.Source (Join-Path $RepoRoot "tools\capture-local-chrome.mjs") 2> $NodeErrorLog |
         Tee-Object -FilePath $NodeLog
     $CaptureExitCode = $LASTEXITCODE
+    if (Test-Path -LiteralPath $NodeErrorLog) {
+        Get-Content -LiteralPath $NodeErrorLog | Tee-Object -FilePath $NodeLog -Append
+    }
     if ($CaptureExitCode -ne 0) {
-        throw "Node capture failed with exit code $CaptureExitCode. Full diagnostics: $NodeLog"
+        throw "Node capture failed with exit code $CaptureExitCode. See $NodeLog"
     }
 }
 finally {
