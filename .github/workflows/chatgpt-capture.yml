@@ -113,6 +113,11 @@ jobs:
             echo "Capturing with $engine"
             export GPT_DIL_BROWSER="$engine"
             export GPT_DIL_OUTPUT_DIR="capture-output/$engine"
+            if [ "$engine" = "firefox" ]; then
+              export GPT_DIL_RUN_ANONYMOUS_PROBE=true
+            else
+              export GPT_DIL_RUN_ANONYMOUS_PROBE=false
+            fi
             if node tools/capture-chatgpt.mjs; then
               successes=$((successes + 1))
             else
