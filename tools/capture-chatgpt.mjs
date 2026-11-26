@@ -1113,10 +1113,12 @@ async function main() {
       url: sanitizeUrl(worker.url()),
     }));
     if (typeof context.serviceWorkers === "function") {
-      workerInventory.push(...context.serviceWorkers().map((worker) => ({
-        type: "service",
-        url: sanitizeUrl(worker.url()),
-      })));
+      try {
+        workerInventory.push(...context.serviceWorkers().map((worker) => ({
+          type: "service",
+          url: sanitizeUrl(worker.url()),
+        })));
+      } catch {}
     }
 
     if (INCLUDE_ASSETS) {
