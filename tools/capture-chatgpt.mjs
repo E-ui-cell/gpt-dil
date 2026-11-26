@@ -14,6 +14,7 @@ const MAX_ASSETS = 600;
 const MAX_ASSET_BYTES = 24 * 1024 * 1024;
 const MAX_TOTAL_ASSET_BYTES = 300 * 1024 * 1024;
 const MAX_SOURCE_MAPS = 200;
+const MAX_JSON_RESPONSE_BYTES = 6 * 1024 * 1024;
 const ALLOWED_ASSET_HOSTS = [
   "chatgpt.com",
   "openai.com",
@@ -269,9 +270,59 @@ async function processStaticResponse(response, record) {
   const contentType = headers["content-type"] || "";
   const resourceType = request.resourceType();
 
-  if (!response.ok() || !isStaticTextAsset(rawUrl, contentType, resourceType)) {
+  if (!response.ok()) return;
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
     return;
   }
+  if (!isRelevantHost(parsedUrl.hostname)) return;
+
+  const isStatic = isStaticTextAsset(rawUrl, contentType, resourceType);
+  const isJsonResponse =
+    /(?:application|text)\/(?:[^;]+\+)?json/i.test(contentType);
+
+  // Inspect dynamic JSON responses for schema only. Never persist their values.
+  if (!isStatic && isJsonResponse) {
+    const declaredLength = Number(headers["content-length"] || 0);
+    if (declaredLength > MAX_JSON_RESPONSE_BYTES) {
+      record.responseBody = {
+        kind: "json",
+        skipped: "over-size-limit",
+        bytes: declaredLength,
+      };
+      return;
+    }
+
+    const body = await response.body();
+    if (!body.length || body.length > MAX_JSON_RESPONSE_BYTES) {
+      record.responseBody = {
+        kind: "json",
+        skipped: "empty-or-over-size-limit",
+        bytes: body.length,
+      };
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(body.toString("utf8"));
+      record.responseBody = {
+        kind: "json",
+        bytes: body.length,
+        shape: describeShape(parsed),
+      };
+    } catch {
+      record.responseBody = {
+        kind: "json-unparsed",
+        bytes: body.length,
+      };
+    }
+    return;
+  }
+
+  if (!isStatic) return;
 
   const declaredLength = Number(headers["content-length"] || 0);
   if (declaredLength > MAX_ASSET_BYTES) {
@@ -590,6 +641,21 @@ async function main() {
     JSON.stringify([...endpointCandidates].sort(), null, 2),
   );
   await writeFile(
+    path.join(OUTPUT_DIR, "response-shapes.json"),
+    JSON.stringify(
+      network
+        .filter((entry) => entry.responseBody)
+        .map((entry) => ({
+          method: entry.method,
+          url: entry.url,
+          status: entry.status,
+          responseBody: entry.responseBody,
+        })),
+      null,
+      2,
+    ),
+  );
+  await writeFile(
     path.join(OUTPUT_DIR, "assets.json"),
     JSON.stringify([...assetByHash.values()], null, 2),
   );
@@ -621,6 +687,9 @@ async function main() {
       networkRequests: network.length,
       jsonPayloadShapes: network.filter(
         (entry) => entry.requestBody?.kind === "json",
+      ).length,
+      jsonResponseShapes: network.filter(
+        (entry) => entry.responseBody?.kind === "json",
       ).length,
       endpointCandidates: endpointCandidates.size,
       sourceMapCandidates: sourceMapCandidates.size,
@@ -661,6 +730,7 @@ async function main() {
       "Files:",
       "- network.json: sanitized request/response metadata",
       "- payload-shapes.json: JSON request structure without values",
+      "- response-shapes.json: JSON response structure without values",
       "- endpoints.json: endpoint-like strings extracted from frontend code",
       "- assets.json: saved asset index and SHA-256 hashes",
       "- source-maps.json: source-map discovery results",
