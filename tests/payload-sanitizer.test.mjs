@@ -103,3 +103,9 @@ test("redacts token-suffixed fields embedded in plain text", () => {
   assert.match(output, /prepare_token/);
   assert.match(output, /conduit_token/);
 });
+
+test("marks arrays that exceed the payload sanitizer limit", () => {
+  const output = sanitizePayload(Array.from({ length: 2002 }, (_, index) => index));
+  assert.equal(output.length, 2001);
+  assert.deepEqual(output.at(-1), { __truncatedItems: 2 });
+});
