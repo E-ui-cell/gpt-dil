@@ -752,7 +752,10 @@ async function runAnonymousProbe(page) {
 
     try {
       await page.waitForFunction(() => {
-        const expectedText = document.body?.innerText?.includes("GPT-DIL-PROBE-OK.") || false;
+        const assistantText = [...document.querySelectorAll(
+          '[data-message-role="assistant"], [data-message-author-role="assistant"]',
+        )].map((element) => element.innerText || element.textContent || "").join("\\n");
+        const expectedText = assistantText.includes("GPT-DIL-PROBE-OK.");
         const stopButton = [...document.querySelectorAll("button")].some((button) =>
           /stop/i.test(button.getAttribute("aria-label") || "") && !button.disabled
         );
@@ -772,9 +775,9 @@ async function runAnonymousProbe(page) {
     result.completedMarkers = await page.locator(
       '[data-conversation-control="message-stream-complete"], [data-conversation-control="complete"]',
     ).count();
-    result.expectedTextFound = await page.locator("body").innerText().then((text) =>
-      text.includes("GPT-DIL-PROBE-OK.")
-    ).catch(() => false);
+    result.expectedTextFound = await page.locator(
+      '[data-message-role="assistant"], [data-message-author-role="assistant"]',
+    ).allInnerTexts().then((texts) => texts.join("\\n").includes("GPT-DIL-PROBE-OK.")).catch(() => false);
     await page.waitForTimeout(3000).catch(() => {});
   } catch (error) {
     result.status = result.status === "submitted" ? "submitted-error" : "failed";
