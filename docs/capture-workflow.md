@@ -2,7 +2,7 @@
 
 ## AUTOMATIC CLOUD CAPTURE
 
-Runs every day at **03:17 UTC** on Windows and Ubuntu.
+Runs every day at **03:17 UTC**. Windows uses Chromium; Ubuntu runs Chromium, Firefox and WebKit.
 
 Each run creates a public GitHub Release named `capture-RUN_ID`, with separate Windows and Linux archives. Manual runs are available from **Actions → ChatGPT Capture → Run workflow**; choose one runner or both.
 
@@ -17,7 +17,7 @@ Actions artifacts are retained for 14 days. Release assets remain until deleted.
 - Streaming response event names and JSON shapes, without values
 - WebSocket connection metadata, frame sizes and JSON shapes, without values
 - Script URLs, hashes, source-map references and executed function ranges
-- Chromium performance metrics, resource timing and browser errors
+- Chromium performance metrics, script coverage, resource timing and browser errors
 - Local/session storage key names, IndexedDB database names and service-worker scopes
 
 The cloud browser is fresh and unauthenticated. It cannot see your ChatGPT account traffic.
