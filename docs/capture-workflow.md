@@ -2,7 +2,7 @@
 
 ## AUTOMATIC CLOUD CAPTURE
 
-Runs every day at **03:17 UTC**. Windows uses Chromium; Ubuntu runs Chromium, Firefox and WebKit.
+Runs every day at **03:17 UTC** and whenever the public collector or its workflow changes. Windows uses Chromium; Ubuntu runs Chromium, Firefox and WebKit.
 
 Each run creates a public GitHub Release named `capture-RUN_ID`, with separate Windows and Linux archives. Manual runs are available from **Actions → ChatGPT Capture → Run workflow**; choose one runner or both.
 
