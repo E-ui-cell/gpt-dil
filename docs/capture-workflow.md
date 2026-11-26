@@ -1,45 +1,52 @@
 # CHATGPT CAPTURE
 
-Run it from GitHub:
+## AUTOMATIC CLOUD CAPTURE
 
-1. Open **Actions**.
-2. Select **ChatGPT Capture**.
-3. Select Windows, Linux, or both.
-4. Run the workflow.
+Runs every day at **03:17 UTC** on Windows and Ubuntu.
 
-Windows is the default. The workflow is manual-only and does not need API keys or account credentials.
+Each run creates a public GitHub Release named `capture-RUN_ID`, with separate Windows and Linux archives. Manual runs are available from **Actions → ChatGPT Capture → Run workflow**; choose one runner or both.
 
-## COLLECTED
+Actions artifacts are retained for 14 days. Release assets remain until deleted.
 
-- Sanitized ChatGPT DOM structure plus public JavaScript and CSS
-- Static JSON assets and exposed source maps
-- Network URLs, methods, resource types, status codes and timing
-- JSON request and response structure: field names, types and array shapes; values are omitted
-- Endpoint-like strings extracted from frontend bundles
-- Browser errors and resource timing
-- SHA-256 hashes for saved assets
+## CLOUD DATA
 
-The Windows and Linux jobs use fresh, unauthenticated Chromium sessions. Selecting **both** runs them in parallel so we can compare platform behavior.
+- Public ChatGPT DOM snapshot with inline scripts and sensitive attributes removed
+- JavaScript, CSS, static JSON assets and exposed source maps
+- Request URLs, methods, query parameter names, resource types, status codes and timings
+- JSON request and response schemas, without values
+- Streaming response event names and JSON shapes, without values
+- WebSocket connection metadata, frame sizes and JSON shapes, without values
+- Script URLs, hashes, source-map references and executed function ranges
+- Chromium performance metrics, resource timing and browser errors
+- Local/session storage key names, IndexedDB database names and service-worker scopes
 
-## NOT COLLECTED
+The cloud browser is fresh and unauthenticated. It cannot see your ChatGPT account traffic.
 
-- Login cookies or browser profiles
-- Authorization or request headers
-- Raw request bodies or conversation text
-- Raw dynamic API response bodies and values (JSON response shapes only)
-- Local storage or session storage
-- HAR files
+## LOCAL AUTHENTICATED CAPTURE
 
-This is intentional. HAR files and full browser traces can contain credentials, cookies, and private message content. Request and JSON response payloads are reduced to schema shapes before they are written to the artifact.
+Run this on Windows from the repository or installed GPT-DIL folder:
 
-## ARTIFACTS
+```powershell
+.\Capture-Local.ps1
+```
 
-Each runner uploads a separate chatgpt-capture artifact. Artifacts are retained for three days.
+It launches a separate Chrome profile with remote debugging enabled, then captures browser-visible ChatGPT traffic. Sign into ChatGPT in that Chrome window and use it normally. Press **Ctrl+C** in the PowerShell window to finish and write the report.
 
-**This repository is public. Treat every uploaded artifact as public.** The capture is unauthenticated, but frontend bundles and source maps are still copies of publicly served site assets.
+The first run installs Playwright locally and creates a persistent Chrome profile at `%LOCALAPPDATA%\GPT-DIL\ChromeProfile`. Capture output is written to `Documents\GPT-DIL-Captures`.
+
+Local capture includes:
+
+- Actual JSON request and response bodies, including message and tool payloads
+- Completed text/event-stream responses and their event data
+- Sent and received WebSocket text frames
+- Request/response status, headers names, content types and timings
+- Sanitized DOM snapshots, resource lists and browser diagnostics
+- Cookie names/attributes, storage key names and IndexedDB database names
+
+Authorization/cookie header values, cookie values, common credential fields, and multipart file contents are excluded. Conversation text is deliberately retained for protocol analysis.
+
+**Local captures are private. They can contain your conversations. Never upload them to this public repository or its Releases.** Share only a copy you have inspected and redacted.
 
 ## LIMITS
 
-This workflow investigates the browser-visible public frontend. It cannot reveal server-side prompts, model internals, private backend code, or authenticated conversation traffic.
-
-To study real conversation requests and streamed responses, we need a separate local browser capture that runs inside your own logged-in Chrome session and redacts sensitive data before export. Do not put browser cookies, access tokens, or HAR files in GitHub Actions secrets or repository files.
+This collects browser-visible data. It cannot reveal server-side prompts, model internals, private backend code, or hidden model reasoning. Cloud Releases contain public frontend data and sanitized schemas only.
