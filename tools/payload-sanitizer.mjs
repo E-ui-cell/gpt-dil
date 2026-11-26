@@ -33,7 +33,7 @@ export function sanitizeProtocolBody(raw, contentType = "") {
   const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw ?? "");
 
   if (/multipart\\/form-data/i.test(contentType)) {
-    const fieldNames = [...new Set([...text.matchAll(/name="([^"]+)"/g)].map((match) => match[1]))];
+    const fieldNames = [...new Set([...text.matchAll(/(?:^|[;\\s])name="([^"]+)"/g)].map((match) => match[1]))];
     return {
       kind: "multipart-metadata",
       bytes: Buffer.byteLength(text, "utf8"),
