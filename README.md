@@ -17,7 +17,7 @@ irm https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/Install.ps1 | iex
 
 Open **Actions → ChatGPT Capture → Run workflow**.
 
-Windows is the default. Linux and both-runner comparison are available.
+Windows is the default. Linux and both-runner comparison are available. Public frontend only; no account login is used.
 
 # UPDATE
 
