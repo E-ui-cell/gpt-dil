@@ -210,9 +210,14 @@ function storeProtocolPayload(direction, record, contentType, rawBytes, payload)
   }
 
   const entry = {
+    sequence: protocolPayloads.length + 1,
     direction,
     requestId: record.requestId ?? null,
     frameUrl: record.frameUrl ?? null,
+    startedAtMs: record.atMs ?? null,
+    observedAtMs: direction === "request" ? (record.atMs ?? null) : (record.responseAtMs ?? null),
+    durationMs: record.durationMs ?? null,
+    resourceType: record.resourceType ?? null,
     method: record.method,
     url: record.url,
     status: record.status ?? null,
