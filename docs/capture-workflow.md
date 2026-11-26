@@ -15,12 +15,13 @@ Actions artifacts are retained for 14 days. Release assets remain until deleted.
 - Request URLs, methods, query parameter names, resource types, status codes and timings
 - JSON request and response schemas, without values
 - Streaming response event names and JSON shapes, without values
+- A fixed anonymous test turn's request/response schema and completion markers
 - WebSocket connection metadata, frame sizes and JSON shapes, without values
 - Script URLs, hashes, source-map references and executed function ranges
 - Chromium performance metrics, script coverage, resource timing and browser errors
 - Local/session storage key names, IndexedDB database names and service-worker scopes
 
-The cloud browser is fresh and unauthenticated. It cannot see your ChatGPT account traffic.
+The cloud browser is fresh and unauthenticated. Linux Firefox sends one fixed, harmless anonymous test prompt per run to exercise the real conversation request and response stream; no account is used and no user text is sent. It cannot see your ChatGPT account traffic.
 
 ## LOCAL AUTHENTICATED CAPTURE
 
