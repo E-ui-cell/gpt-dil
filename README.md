@@ -15,7 +15,7 @@ irm https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/Install.ps1 | iex
 
 # CAPTURE
 
-Daily Windows + Linux captures are published in [Releases](https://github.com/E-ui-cell/gpt-dil/releases). They include sanitized anonymous request/response payloads, completed stream data, WebSocket text/JSON frames, public assets and iframe snapshots.
+Daily Windows + Linux captures are published in [Releases](https://github.com/E-ui-cell/gpt-dil/releases). They include sanitized anonymous request/response payloads, completed stream data, WebSocket text/JSON frames, public assets, iframe snapshots and automated DIL-symbol/endpoint analysis.
 
 # LOCAL PROTOCOL
 
