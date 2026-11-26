@@ -1320,6 +1320,20 @@ async function main() {
       includeAssets: INCLUDE_ASSETS,
       includeSourceMaps: INCLUDE_SOURCE_MAPS,
     },
+    limits: {
+      maxAssets: MAX_ASSETS,
+      maxAssetBytes: MAX_ASSET_BYTES,
+      maxTotalAssetBytes: MAX_TOTAL_ASSET_BYTES,
+      maxSourceMaps: MAX_SOURCE_MAPS,
+      maxJsonResponseBytes: MAX_JSON_RESPONSE_BYTES,
+      maxEventStreamBytes: MAX_EVENT_STREAM_BYTES,
+      maxEventStreamWaitMs: 45000,
+      maxRequestShapeBytes: MAX_REQUEST_SHAPE_BYTES,
+      maxProtocolPayloads: MAX_PROTOCOL_PAYLOADS,
+      maxProtocolPayloadBytes: MAX_PROTOCOL_PAYLOAD_BYTES,
+      maxWebSocketFrameBytes: MAX_WEBSOCKET_FRAME_BYTES,
+      maxWebSocketFramesPerConnection: { sent: 100, received: 200 },
+    },
     counts: {
       networkRequests: network.length,
       jsonPayloadShapes: network.filter(
