@@ -1,0 +1,73 @@
+name: ChatGPT Capture
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner operating system
+        type: choice
+        required: true
+        default: windows-latest
+        options:
+          - windows-latest
+          - ubuntu-latest
+          - both
+      include_assets:
+        description: Save public HTML, JavaScript, CSS and static assets
+        type: boolean
+        required: true
+        default: true
+      include_source_maps:
+        description: Discover and save exposed JavaScript source maps
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ inputs.runner == 'both' && fromJSON('["windows-latest","ubuntu-latest"]') || fromJSON(format('["{0}"]', inputs.runner)) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright
+        run: npm install --no-save --no-audit --no-fund playwright
+
+      - name: Install Chromium (Windows)
+        if: runner.os == 'Windows'
+        run: npx playwright install chromium
+
+      - name: Install Chromium (Linux)
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Capture ChatGPT public frontend
+        env:
+          GPT_DIL_OUTPUT_DIR: capture-output
+          GPT_DIL_INCLUDE_ASSETS: ${{ inputs.include_assets }}
+          GPT_DIL_INCLUDE_SOURCE_MAPS: ${{ inputs.include_source_maps }}
+        run: node tools/capture-chatgpt.mjs
+
+      - name: Upload capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatgpt-capture-${{ runner.os }}-${{ github.run_id }}
+          path: capture-output/
+          if-no-files-found: warn
+          retention-days: 3
