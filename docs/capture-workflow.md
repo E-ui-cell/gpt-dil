@@ -60,4 +60,4 @@ Local body capture is capped at 32 MiB per body. DIL bridge logging is capped at
 
 ## LIMITS
 
-This collects browser-visible data. It cannot reveal server-side prompts, model internals, private backend code, or hidden model reasoning. Cloud Releases contain public frontend data and sanitized schemas only.
+This collects browser-visible data. It cannot reveal server-side prompts, model internals, private backend code, or hidden model reasoning. Cloud Releases contain unauthenticated public frontend assets and credential-redacted anonymous protocol payloads only.
