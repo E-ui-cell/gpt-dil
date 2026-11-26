@@ -88,6 +88,10 @@ function sanitizeUrl(rawUrl) {
   }
 }
 
+function isTextProtocolContentType(contentType) {
+  return /json|\\+json|x-www-form-urlencoded|multipart\\/form-data|text\\/|application\\/xml/i.test(contentType);
+}
+
 function sanitizeText(value) {
   return String(value ?? "")
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
@@ -448,7 +452,7 @@ async function processStaticResponse(response, record) {
   const isJsonResponse =
     /(?:application|text)\/(?:[^;]+\+)?json/i.test(contentType);
 
-  // Inspect dynamic JSON responses for schema only. Never persist their values.
+  // Persist sanitized values for public anonymous protocol analysis.
   if (!isStatic && isJsonResponse) {
     const declaredLength = Number(headers["content-length"] || 0);
     if (declaredLength > MAX_JSON_RESPONSE_BYTES) {
@@ -493,6 +497,13 @@ async function processStaticResponse(response, record) {
         kind: "json-unparsed",
         bytes: body.length,
       };
+      storeProtocolPayload(
+        "response",
+        record,
+        contentType,
+        body.length,
+        sanitizeProtocolBody(body, contentType),
+      );
     }
     return;
   }
@@ -838,7 +849,7 @@ async function main() {
       record.requestBody = body;
       if (body.kind !== "omitted") {
         const rawBody = request.postData();
-        if (rawBody != null && isRelevantHost(url.hostname)) {
+        if (rawBody != null && isRelevantHost(url.hostname) && isTextProtocolContentType(request.headers()["content-type"] || "")) {
           const contentType = request.headers()["content-type"] || "";
           storeProtocolPayload(
             "request",
