@@ -60,7 +60,7 @@ function redactText(value) {
     .replace(/([?&](?:token|access_token|refresh_token|api_key|key|signature|sig)=)[^&\s]+/gi, "$1[REDACTED]");
 }
 
-const SECRET_KEY = /^(?:authorization|cookie|set-cookie|password|passwd|secret|client_secret|api_key|access_token|refresh_token|id_token|auth_token|session_token|csrf|csrf_token|xsrf|sentinel|proof_token|token|email)$/i;
+const SECRET_KEY = /^(?:authorization|cookie|set-cookie|password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|csrf(?:[_-]?token)?|xsrf|sentinel|proof[_-]?token|token|email)$/i;
 
 function redactObject(value, depth = 0) {
   if (depth > 30) return "[DEPTH-LIMIT]";
@@ -163,7 +163,15 @@ function requestContentType(request) {
 
 function addPending(promise) {
   pending.add(promise);
-  promise.finally(() => pending.delete(promise));
+  promise
+    .catch((error) => {
+      consoleEvents.push({
+        type: "capture-error",
+        message: redactText(error?.message || error),
+        at: new Date().toISOString(),
+      });
+    })
+    .finally(() => pending.delete(promise));
 }
 
 async function recordRequest(request) {
