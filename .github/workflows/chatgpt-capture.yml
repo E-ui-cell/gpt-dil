@@ -77,7 +77,7 @@ jobs:
     name: Capture on Linux
     if: github.event_name == 'schedule' || inputs.runner == 'ubuntu-latest' || inputs.runner == 'both'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v7
