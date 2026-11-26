@@ -48,7 +48,7 @@ Local capture includes:
 - Sanitized DOM snapshots, resource lists and browser diagnostics
 - Cookie names/attributes, storage key names and IndexedDB database names
 
-Authorization/cookie header values, cookie values, common credential fields, and multipart upload contents are excluded. Selected binary responses are saved locally. Conversation text is deliberately retained for protocol analysis. DIL bridge events are written to `dil-bridge.jsonl`; use `node tools/analyze-dil-bridge.mjs path\\to\\dil-bridge.jsonl` to summarize runner lifetimes, command IDs and long event gaps.
+Authorization/cookie header values, cookie values, common credential fields, and multipart upload contents are excluded. Selected binary responses are saved locally. Conversation text is deliberately retained for protocol analysis. DIL bridge events are written to `dil-bridge.jsonl`; use `node tools/analyze-dil-bridge.mjs <capture-folder>/dil-bridge.jsonl` to summarize runner lifetimes, command IDs and long event gaps.
 
 **Local captures are private. They can contain your conversations. Never upload them to this public repository or its Releases.** Share only a copy you have inspected and redacted.
 
