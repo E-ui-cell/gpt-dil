@@ -38,7 +38,17 @@ jobs:
           node-version: 22
 
       - name: Check collector syntax
-        run: node --check tools/capture-chatgpt.mjs
+        run: |
+          node --check tools/capture-chatgpt.mjs
+          node --check tools/capture-local-chrome.mjs
+
+      - name: Check PowerShell launcher syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'Capture-Local.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List; exit 1 }
 
       - name: Install Playwright
         run: npm install --no-save --no-audit --no-fund playwright
