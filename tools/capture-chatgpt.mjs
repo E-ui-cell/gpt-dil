@@ -1,10 +1,14 @@
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const TARGET_URL = "https://chatgpt.com/";
+const BROWSER_NAME = process.env.GPT_DIL_BROWSER || "chromium";
+const BROWSER_TYPES = { chromium, firefox, webkit };
+const browserType = BROWSER_TYPES[BROWSER_NAME];
+if (!browserType) throw new Error("Unsupported browser engine: " + BROWSER_NAME);
 const OUTPUT_DIR = path.resolve(process.env.GPT_DIL_OUTPUT_DIR || "capture-output");
 const INCLUDE_ASSETS = process.env.GPT_DIL_INCLUDE_ASSETS !== "false";
 const INCLUDE_SOURCE_MAPS =
@@ -523,9 +527,9 @@ async function collectSourceMaps(context) {
 async function main() {
   await mkdir(OUTPUT_DIR, { recursive: true });
 
-  browser = await chromium.launch({ headless: true });
+  browser = await browserType.launch({ headless: true });
   browserInfo = {
-    name: "Chromium",
+    name: BROWSER_NAME,
     version: browser.version(),
     node: process.version,
     platform: process.platform,
@@ -546,6 +550,7 @@ async function main() {
   let preciseCoverage = [];
   let browserMetrics = [];
   try {
+    if (BROWSER_NAME !== "chromium") throw new Error("CDP coverage is Chromium-only.");
     cdpSession = await context.newCDPSession(page);
     await cdpSession.send("Debugger.enable");
     cdpSession.on("Debugger.scriptParsed", (event) => {
