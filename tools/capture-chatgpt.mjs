@@ -706,7 +706,7 @@ async function main() {
   }
 
   // Allow lazy-loaded chunks and late requests to settle.
-  await page.waitForTimeout(12000).catch(() => {});
+  await page.waitForTimeout(20000).catch(() => {});
   await Promise.allSettled([...pendingResponses]);
 
   try {
