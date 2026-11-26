@@ -128,6 +128,8 @@ jobs:
       - name: Package captures
         id: package
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
@@ -152,7 +154,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/* --clobber
           else
-            gh release create "$TAG" release-assets/*               --title "ChatGPT capture #${{ github.run_number }}"               --notes "Automated Windows/Linux public-frontend capture. No account login, cookies, authorization headers, raw conversation bodies, or private user data are collected."
+            gh release create "$TAG" release-assets/* --title "ChatGPT capture #${{ github.run_number }}" --notes "Automated Windows/Linux public-frontend capture. No account login, cookies, authorization headers, raw conversation bodies, or private user data are collected."
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
