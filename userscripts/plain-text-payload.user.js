@@ -2,7 +2,7 @@
 // @name         GPT-DIL - Plain Text Payload
 // @namespace    https://github.com/E-ui-cell/gpt-dil
 // @version      0.1.0
-// @description  Adds a plain-text preference to outgoing ChatGPT user messages.
+// @description  Adds an editable custom text payload to outgoing ChatGPT user messages.
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @run-at       document-start
@@ -16,11 +16,15 @@
 (() => {
     "use strict";
 
-    const VERSION = "0.1.0";
-    const INSTRUCTION =
-        "Please answer in plain text. Avoid Markdown headings, bullets, " +
-        "numbered lists, tables, bold, italics, and code fences. " +
-        "Use ordinary paragraphs. If code is necessary, output raw code without fences.";
+    const VERSION = "0.2.0";
+
+    // EDIT THIS PAYLOAD. It is appended to the latest user message's text.
+    // Keep it as ordinary text; the existing JSON message structure is preserved.
+    const CUSTOM_PAYLOAD_TEXT = [
+        "Please answer in plain text.",
+        "Avoid Markdown headings, bullets, numbered lists, tables, bold, italics, and code fences.",
+        "Use ordinary paragraphs. If code is necessary, output raw code without fences."
+    ].join(" ");
 
     if (window.__GPT_DIL_PLAIN_TEXT_VERSION__ === VERSION) return;
     window.__GPT_DIL_PLAIN_TEXT_VERSION__ = VERSION;
@@ -35,7 +39,8 @@
             const parsed = new URL(String(url), location.href);
             return (parsed.hostname === "chatgpt.com" ||
                     parsed.hostname === "chat.openai.com") &&
-                   parsed.pathname === "/backend-api/f/conversation";
+                   (parsed.pathname === "/backend-api/f/conversation" ||
+                    parsed.pathname === "/backend-api/conversation");
         } catch (_) {
             return false;
         }
@@ -69,11 +74,11 @@
         const parts = userMessage.content.parts;
         for (let i = parts.length - 1; i >= 0; i--) {
             if (typeof parts[i] !== "string") continue;
-            if (parts[i].includes(INSTRUCTION)) return null;
+            if (parts[i].includes(CUSTOM_PAYLOAD_TEXT)) return null;
 
             parts[i] = parts[i].length
-                ? parts[i] + "\n\n" + INSTRUCTION
-                : INSTRUCTION;
+                ? parts[i] + "\n\n" + CUSTOM_PAYLOAD_TEXT
+                : CUSTOM_PAYLOAD_TEXT;
 
             return JSON.stringify(payload);
         }
@@ -115,7 +120,7 @@
                     return nativeFetch.apply(this, arguments);
                 }
 
-                log("Modified POST /backend-api/f/conversation (fetch). No headers or response data were read.");
+                log("Modified POST /backend-api/conversation (fetch). No headers or response data were read.");
 
                 if (isRequest) {
                     const nextInit = Object.assign({}, init || {}, { body: modifiedBody });
@@ -153,12 +158,12 @@
                 const modifiedBody = modifyPayload(body);
                 if (modifiedBody) {
                     body = modifiedBody;
-                    log("Modified POST /backend-api/f/conversation (XHR).");
+                    log("Modified POST /backend-api/conversation (XHR).");
                 }
             }
             return nativeSend.call(this, body);
         };
     }
 
-    log("Plain-text payload hook active", VERSION);
+    log("Custom conversation payload hook active", VERSION);
 })();
