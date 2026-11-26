@@ -603,7 +603,7 @@ async function main() {
           }
         });
 
-        return "<!doctype html>\\n" + clone.outerHTML;
+        return "<!doctype html>" + clone.outerHTML;
       });
 
       await writeFile(
