@@ -21,7 +21,7 @@ Windows is the default. Linux and both-runner comparison are available.
 
 # UPDATE
 
-Run .\\Install.ps1 -Force from the installed folder.
+Run .\Install.ps1 -Force from the installed folder.
 
 # STATUS
 
