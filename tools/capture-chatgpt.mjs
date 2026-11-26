@@ -38,6 +38,8 @@ const startedAt = new Date();
 const network = [];
 const consoleEvents = [];
 const websocketRecords = [];
+const frameInventory = [];
+let workerInventory = [];
 const scriptRecords = new Map();
 const endpointCandidates = new Set();
 const sourceMapCandidates = new Map();
@@ -333,10 +335,11 @@ function isStaticTextAsset(rawUrl, contentType, resourceType) {
   );
 }
 
-function summarizeEventStream(body) {
+function summarizeEventStream(body, contentType = "") {
   const text = body.toString("utf8");
   const eventTypes = new Map();
   const dataShapes = new Map();
+  const isNdjson = /ndjson/i.test(contentType);
   let currentEvent = "message";
   let eventCount = 0;
   let doneMarker = false;
@@ -346,9 +349,12 @@ function summarizeEventStream(body) {
       currentEvent = line.slice(6).trim() || "message";
       continue;
     }
-    if (!line.startsWith("data:")) continue;
 
-    const data = line.slice(5).trim();
+    let data;
+    if (line.startsWith("data:")) data = line.slice(5).trim();
+    else if (isNdjson && line.trim()) data = line.trim();
+    else continue;
+
     if (data === "[DONE]") {
       doneMarker = true;
       continue;
@@ -518,7 +524,7 @@ async function processStaticResponse(response, record) {
       };
       return;
     }
-    record.responseBody = summarizeEventStream(body);
+    record.responseBody = summarizeEventStream(body, contentType);
     storeProtocolPayload(
       "response",
       record,
@@ -1008,6 +1014,94 @@ async function main() {
       name: sanitizeUrl(resource.name),
     }));
 
+    workerInventory = page.workers().map((worker) => ({
+      type: "dedicated",
+      url: sanitizeUrl(worker.url()),
+    }));
+    if (typeof context.serviceWorkers === "function") {
+      workerInventory.push(...context.serviceWorkers().map((worker) => ({
+        type: "service",
+        url: sanitizeUrl(worker.url()),
+      })));
+    }
+
+    if (INCLUDE_ASSETS) {
+      const frameDirectory = path.join(OUTPUT_DIR, "frames");
+      await mkdir(frameDirectory, { recursive: true });
+      for (const [index, frame] of page.frames().entries()) {
+        try {
+          const frameState = await frame.evaluate(() => {
+            const clone = document.documentElement.cloneNode(true);
+            clone.querySelectorAll("script").forEach((script) => {
+              script.textContent = script.src ? "" : "[inline script omitted]";
+            });
+            clone.querySelectorAll("input, textarea, select").forEach((field) => {
+              if ("value" in field) field.value = "";
+              field.removeAttribute("value");
+              field.removeAttribute("checked");
+              field.removeAttribute("selected");
+              field.textContent = "";
+            });
+            clone.querySelectorAll(
+              'meta[name*="token" i], meta[name*="csrf" i], meta[property*="token" i]',
+            ).forEach((meta) => meta.remove());
+            clone.querySelectorAll("*").forEach((element) => {
+              for (const attribute of [...element.attributes]) {
+                if (/^(?:nonce|value|.*authorization.*|data-.*(?:token|session|csrf))$/i.test(attribute.name)) {
+                  element.removeAttribute(attribute.name);
+                }
+              }
+              for (const attributeName of ["src", "href"]) {
+                const value = element.getAttribute(attributeName);
+                if (!value) continue;
+                try {
+                  const assetUrl = new URL(value, location.href);
+                  element.setAttribute(attributeName, assetUrl.origin + assetUrl.pathname);
+                } catch {}
+              }
+            });
+            return {
+              title: document.title,
+              url: location.origin + location.pathname,
+              readyState: document.readyState,
+              scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
+              resources: performance.getEntriesByType("resource").map((entry) => ({
+                name: entry.name,
+                initiatorType: entry.initiatorType,
+                durationMs: Math.round(entry.duration),
+                transferSize: entry.transferSize || 0,
+                decodedBodySize: entry.decodedBodySize || 0,
+              })),
+              html: "<!doctype html>" + clone.outerHTML,
+            };
+          });
+          const filename = "frame-" + String(index).padStart(3, "0") + ".html";
+          await writeFile(path.join(frameDirectory, filename), frameState.html, "utf8");
+          frameInventory.push({
+            index,
+            name: frame.name(),
+            parentUrl: frame.parentFrame() ? sanitizeUrl(frame.parentFrame().url()) : null,
+            url: sanitizeUrl(frameState.url),
+            title: frameState.title,
+            readyState: frameState.readyState,
+            scripts: frameState.scripts.map(sanitizeUrl),
+            resources: frameState.resources.map((resource) => ({
+              ...resource,
+              name: sanitizeUrl(resource.name),
+            })),
+            html: path.posix.join("frames", filename),
+          });
+        } catch (error) {
+          frameInventory.push({
+            index,
+            name: frame.name(),
+            url: sanitizeUrl(frame.url()),
+            error: sanitizeText(error?.message || error),
+          });
+        }
+      }
+    }
+
     if (INCLUDE_ASSETS) {
       const safeHtml = await page.evaluate(() => {
         const clone = document.documentElement.cloneNode(true);
@@ -1180,6 +1274,14 @@ async function main() {
     JSON.stringify(pageState, null, 2),
   );
   await writeFile(
+    path.join(OUTPUT_DIR, "frames.json"),
+    JSON.stringify(frameInventory, null, 2),
+  );
+  await writeFile(
+    path.join(OUTPUT_DIR, "workers.json"),
+    JSON.stringify(workerInventory, null, 2),
+  );
+  await writeFile(
     path.join(OUTPUT_DIR, "console.json"),
     JSON.stringify(consoleEvents, null, 2),
   );
@@ -1216,6 +1318,8 @@ async function main() {
       scriptsWithCoverage: preciseCoverage.length,
       endpointCandidates: endpointCandidates.size,
       endpointGroups: summarizeEndpoints(network).length,
+      framesObserved: frameInventory.length,
+      workersObserved: workerInventory.length,
       sourceMapCandidates: sourceMapCandidates.size,
       sourceMapsFetched: sourceMaps.length,
       assetsSaved: assetByHash.size,
@@ -1270,6 +1374,8 @@ async function main() {
       "- assets.json: saved asset index and SHA-256 hashes",
       "- source-maps.json: source-map discovery results",
       "- page-state.json: browser and resource timing metadata",
+      "- frames.json and frames/: frame tree, scripts, resource timings and sanitized DOM snapshots",
+      "- workers.json: dedicated and service worker script URLs",
       "- console.json: sanitized browser warnings and errors",
       "- capture.json: run summary and privacy settings",
       "- page.html: sanitized DOM structure; inline scripts and transient attributes removed",
