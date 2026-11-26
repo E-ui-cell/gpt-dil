@@ -549,31 +549,32 @@ async function main() {
   let cdpSession;
   let preciseCoverage = [];
   let browserMetrics = [];
-  try {
-    if (BROWSER_NAME !== "chromium") throw new Error("CDP coverage is Chromium-only.");
-    cdpSession = await context.newCDPSession(page);
-    await cdpSession.send("Debugger.enable");
-    cdpSession.on("Debugger.scriptParsed", (event) => {
-      scriptRecords.set(event.scriptId, {
-        scriptId: event.scriptId,
-        url: sanitizeUrl(event.url || ""),
-        hash: event.hash || null,
-        sourceMapURL: event.sourceMapURL ? sanitizeUrl(new URL(event.sourceMapURL, event.url || TARGET_URL).href) : null,
-        startLine: event.startLine,
-        endLine: event.endLine,
+  if (BROWSER_NAME === "chromium") {
+    try {
+      cdpSession = await context.newCDPSession(page);
+      await cdpSession.send("Debugger.enable");
+      cdpSession.on("Debugger.scriptParsed", (event) => {
+        scriptRecords.set(event.scriptId, {
+          scriptId: event.scriptId,
+          url: sanitizeUrl(event.url || ""),
+          hash: event.hash || null,
+          sourceMapURL: event.sourceMapURL ? sanitizeUrl(new URL(event.sourceMapURL, event.url || TARGET_URL).href) : null,
+          startLine: event.startLine,
+          endLine: event.endLine,
+        });
       });
-    });
-    await cdpSession.send("Profiler.enable");
-    await cdpSession.send("Profiler.startPreciseCoverage", {
-      callCount: false,
-      detailed: true,
-    });
-    await cdpSession.send("Performance.enable");
-  } catch (error) {
-    consoleEvents.push({
-      type: "cdp-setup-error",
-      message: sanitizeText(error?.message || error),
-    });
+      await cdpSession.send("Profiler.enable");
+      await cdpSession.send("Profiler.startPreciseCoverage", {
+        callCount: false,
+        detailed: true,
+      });
+      await cdpSession.send("Performance.enable");
+    } catch (error) {
+      consoleEvents.push({
+        type: "cdp-setup-error",
+        message: sanitizeText(error?.message || error),
+      });
+    }
   }
 
   context.on("request", (request) => {
