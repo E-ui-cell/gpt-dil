@@ -123,12 +123,12 @@ function sanitizeBody(raw, contentType) {
 }
 
 function bodyExtension(contentType) {
+  if (/multipart\/form-data|x-www-form-urlencoded/i.test(contentType)) return "json";
   if (/json|\+json/i.test(contentType)) return "json";
   if (/text\/event-stream|ndjson/i.test(contentType)) return "stream.txt";
   if (/text\//i.test(contentType)) return "txt";
   return "bin";
 }
-
 async function saveBody(kind, id, raw, contentType) {
   if (raw == null) return null;
   const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(String(raw), "utf8");
@@ -139,7 +139,7 @@ async function saveBody(kind, id, raw, contentType) {
   const directory = path.join(OUTPUT_DIR, kind);
   await mkdir(directory, { recursive: true });
 
-  if (extension === "bin" && !/multipart\\/form-data/i.test(contentType)) {
+  if (extension === "bin" && !/multipart\/form-data/i.test(contentType)) {
     return { skipped: "binary-body-not-exported", bytes: buffer.length };
   }
 
