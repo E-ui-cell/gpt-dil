@@ -81,6 +81,7 @@ function bodyExtension(contentType) {
   if (/json|\+json/i.test(contentType)) return "json";
   if (/text\/event-stream|ndjson/i.test(contentType)) return "stream.txt";
   if (/text\//i.test(contentType)) return "txt";
+  if (/application\/(?:xml|graphql)/i.test(contentType)) return "txt";
   return "bin";
 }
 async function saveBinaryResponse(id, raw, contentType) {
