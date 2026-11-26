@@ -148,6 +148,27 @@ function inspectRequestBody(request) {
     return { kind: "omitted", bytes, reason: "over-size-limit" };
   }
 
+  let contentType = "";
+  try {
+    contentType = request.headers()["content-type"] || "";
+  } catch {}
+
+  if (/application\\/x-www-form-urlencoded/i.test(contentType)) {
+    const fields = [...new Set([...new URLSearchParams(body).keys()])].sort();
+    return { kind: "form-urlencoded", bytes, fields };
+  }
+
+  if (/multipart\\/form-data/i.test(contentType)) {
+    const fields = [...new Set([...body.matchAll(/name="([^"]+)"/g)].map((match) => match[1]))].sort();
+    return {
+      kind: "multipart",
+      bytes,
+      fields,
+      fileParts: (body.match(/filename="/g) || []).length,
+      values: "omitted",
+    };
+  }
+
   try {
     const parsed = JSON.parse(body);
     return {
@@ -694,6 +715,8 @@ async function main() {
       queryKeys: [...new Set(url.searchParams.keys())].sort(),
       resourceType: request.resourceType(),
       navigation: request.isNavigationRequest(),
+      requestHeaderNames: Object.keys(request.headers()).sort(),
+      requestContentType: request.headers()["content-type"] || null,
     };
 
     const body = inspectRequestBody(request);
