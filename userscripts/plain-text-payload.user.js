@@ -120,7 +120,7 @@
                     return nativeFetch.apply(this, arguments);
                 }
 
-                log("Modified POST /backend-api/conversation (fetch). No headers or response data were read.");
+                log("Modified outgoing conversation POST (fetch). No headers or response data were read.");
 
                 if (isRequest) {
                     const nextInit = Object.assign({}, init || {}, { body: modifiedBody });
@@ -158,7 +158,7 @@
                 const modifiedBody = modifyPayload(body);
                 if (modifiedBody) {
                     body = modifiedBody;
-                    log("Modified POST /backend-api/conversation (XHR).");
+                    log("Modified outgoing conversation POST (XHR).");
                 }
             }
             return nativeSend.call(this, body);
