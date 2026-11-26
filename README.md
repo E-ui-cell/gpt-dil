@@ -6,7 +6,7 @@ Small browser tools for ChatGPT.
 
 - uBlock Origin filters
 - Tampermonkey userscripts
-- ChatGPT protocol capture workflow
+- Automated protocol capture
 - Windows installer
 
 # INSTALL
@@ -15,13 +15,17 @@ irm https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/Install.ps1 | iex
 
 # CAPTURE
 
-Open **Actions → ChatGPT Capture → Run workflow**.
+Daily Windows + Linux captures are published in [Releases](https://github.com/E-ui-cell/gpt-dil/releases).
 
-Windows is the default. Linux and both-runner comparison are available. Public frontend only; no account login is used.
+# LOCAL PROTOCOL
+
+Run `.\Capture-Local.ps1` in PowerShell.
+
+This opens a separate Chrome profile for authenticated traffic capture. Sign in there and use ChatGPT. Captures stay on your PC.
 
 # UPDATE
 
-Run .\Install.ps1 -Force from the installed folder.
+Run `.\Install.ps1 -Force` from the installed folder.
 
 # STATUS
 
