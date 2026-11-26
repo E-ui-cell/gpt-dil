@@ -254,7 +254,7 @@ async function recordResponse(response) {
   }
 
   const isTextResponse =
-    /(?:json|\+json|text\/event-stream|application\/x-ndjson|text\/plain|application\/xml)/i.test(contentType);
+    /(?:json|\+json|text\/event-stream|application\/x-ndjson|text\/plain|application\/(?:xml|graphql))/i.test(contentType);
   const isUsefulBinary =
     /^(?:image\/|audio\/|video\/|application\/(?:pdf|octet-stream|zip))/i.test(contentType);
 
