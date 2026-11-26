@@ -133,8 +133,17 @@ export async function analyzeCaptureAssets(captureDirectory) {
       symbolCounts[symbol] = (symbolCounts[symbol] || 0) + count;
     }
     for (const route of result.routes) routeReferences.add(route);
-    totalMatches += result.matches.reduce((sum, item) => sum + item.snippets.length, 0);
-    if (result.matches.length || result.routes.length) findings.push(result);
+
+    const limitedMatches = [];
+    for (const item of result.matches) {
+      const remaining = Math.max(0, MAX_TOTAL_MATCHES - totalMatches);
+      const snippets = item.snippets.slice(0, remaining);
+      totalMatches += snippets.length;
+      if (snippets.length) limitedMatches.push({ ...item, snippets });
+    }
+    if (limitedMatches.length || result.routes.length) {
+      findings.push({ ...result, matches: limitedMatches });
+    }
 
     if (/\.map$/i.test(fullPath)) {
       try {
