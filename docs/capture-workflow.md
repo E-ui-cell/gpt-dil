@@ -11,7 +11,7 @@ Windows is the default. The workflow is manual-only and does not need API keys o
 
 ## COLLECTED
 
-- ChatGPT public frontend HTML, JavaScript and CSS
+- Sanitized ChatGPT DOM structure plus public JavaScript and CSS
 - Static JSON assets and exposed source maps
 - Network URLs, methods, resource types, status codes and timing
 - JSON request payload structure: field names, types and array shapes
