@@ -21,6 +21,7 @@ const ALLOWED_HOSTS = ["chatgpt.com", "openai.com", "oaiusercontent.com", "oaist
 const startedAt = new Date();
 const network = [];
 const websocketRecords = [];
+const frameLifecycleEvents = [];
 const consoleEvents = [];
 const pending = new Set();
 const requestRecords = new WeakMap();
@@ -459,7 +460,34 @@ function attachPage(page) {
   if (pages.has(page)) return;
   pages.add(page);
   addPending(installBridgeHook(page));
-  page.on("frameattached", (frame) => addPending(installBridgeFrame(frame)));
+  page.on("frameattached", (frame) => {
+    frameLifecycleEvents.push({
+      type: "attached",
+      at: new Date().toISOString(),
+      pageUrl: safeUrl(page.url()),
+      frameUrl: safeUrl(frame.url()),
+      name: frame.name(),
+    });
+    addPending(installBridgeFrame(frame));
+  });
+  page.on("framenavigated", (frame) => {
+    frameLifecycleEvents.push({
+      type: "navigated",
+      at: new Date().toISOString(),
+      pageUrl: safeUrl(page.url()),
+      frameUrl: safeUrl(frame.url()),
+      name: frame.name(),
+    });
+  });
+  page.on("framedetached", (frame) => {
+    frameLifecycleEvents.push({
+      type: "detached",
+      at: new Date().toISOString(),
+      pageUrl: safeUrl(page.url()),
+      frameUrl: safeUrl(frame.url()),
+      name: frame.name(),
+    });
+  });
 
   page.on("websocket", (socket) => {
     const entry = {
@@ -571,6 +599,7 @@ async function writeReport() {
   } catch {}
 
   await writeFile(path.join(OUTPUT_DIR, "network.json"), JSON.stringify(network, null, 2));
+  await writeFile(path.join(OUTPUT_DIR, "frame-lifecycle.json"), JSON.stringify(frameLifecycleEvents, null, 2));
   await writeFile(path.join(OUTPUT_DIR, "websockets.json"), JSON.stringify(websocketRecords, null, 2));
   await writeFile(path.join(OUTPUT_DIR, "console.json"), JSON.stringify(consoleEvents, null, 2));
   await writeFile(path.join(OUTPUT_DIR, "cookies-metadata.json"), JSON.stringify(cookies, null, 2));
@@ -598,6 +627,7 @@ async function writeReport() {
     dilBridgeLogBytes: dilBridgeLogBytes,
     pagesObserved: pages.size,
     framesObserved: [...pages].reduce((sum, page) => sum + (page.isClosed() ? 0 : page.frames().length), 0),
+    frameLifecycleEvents: frameLifecycleEvents.length,
     workersObserved: [...pages].reduce((sum, page) => sum + (page.isClosed() ? 0 : page.workers().length), 0),
     pendingTasksAtFinalize: pending.size,
     limits: {
@@ -637,6 +667,7 @@ async function writeReport() {
       "dil-bridge.jsonl: DIL frame/worker/MessagePort messages in both directions; sensitive fields redacted",
       "snapshots/: sanitized DOM snapshots for the main page and accessible iframes, plus browser/storage metadata",
       "network.json: request/response index and timing",
+      "frame-lifecycle.json: iframe attach/navigation/detach timeline",
       "websockets.json: WebSocket connection summary",
       "cookies-metadata.json: cookie names and attributes only; no values",
       "console.json: browser warnings and errors",
