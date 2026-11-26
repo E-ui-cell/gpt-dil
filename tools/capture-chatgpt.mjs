@@ -51,7 +51,8 @@ function sanitizeUrl(rawUrl) {
       .map((part) => {
         if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(part)) return ":uuid";
         if (/^\d{7,}$/.test(part)) return ":id";
-        if (part.length > 120) return ":opaque";
+        if (/^(?:sess(?:ion)?|conv(?:ersation)?|thread|user|message|msg|file|upload)[-_][A-Za-z0-9_-]{12,}$/i.test(part)) return ":id";
+        if (/^[A-Za-z0-9_-]{36,}$/.test(part) || part.length > 120) return ":opaque";
         return part;
       })
       .join("/");
@@ -82,6 +83,7 @@ function safeKey(key) {
   const value = String(key);
   if (value.length > 80) return "[long-key]";
   if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value)) return "[uuid-key]";
+  if (/^[a-f0-9]{24,}$/i.test(value) || /^[A-Za-z0-9_-]{32,}$/.test(value)) return "[opaque-key]";
   if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value)) return "[email-key]";
   return value;
 }
@@ -289,6 +291,12 @@ async function processStaticResponse(response, record) {
     if (/javascript|ecmascript|text\/css/i.test(contentType)) {
       addSourceMapCandidates(text, rawUrl);
     }
+  }
+
+  // Do not export raw document HTML: it can contain transient bootstrap tokens.
+  if (resourceType === "document" || /text\/html/i.test(contentType)) {
+    record.assetSkipped = "raw-html-not-exported";
+    return;
   }
 
   const savedPath = await saveAsset(rawUrl, body, contentType, "network");
@@ -500,9 +508,47 @@ async function main() {
     }));
 
     if (INCLUDE_ASSETS) {
+      const safeHtml = await page.evaluate(() => {
+        const clone = document.documentElement.cloneNode(true);
+
+        clone.querySelectorAll("script").forEach((script) => {
+          script.textContent = script.src ? "" : "[inline script omitted]";
+        });
+
+        clone.querySelectorAll("input, textarea").forEach((field) => {
+          field.removeAttribute("value");
+          field.textContent = "";
+        });
+
+        clone.querySelectorAll(
+          'meta[name*="token" i], meta[name*="csrf" i], meta[property*="token" i]',
+        ).forEach((meta) => meta.remove());
+
+        clone.querySelectorAll("*").forEach((element) => {
+          for (const attribute of [...element.attributes]) {
+            if (/^(?:nonce|value|.*authorization.*|data-.*(?:token|session|csrf))$/i.test(attribute.name)) {
+              element.removeAttribute(attribute.name);
+            }
+          }
+
+          for (const attributeName of ["src", "href"]) {
+            const value = element.getAttribute(attributeName);
+            if (!value) continue;
+            try {
+              const assetUrl = new URL(value, location.href);
+              element.setAttribute(attributeName, assetUrl.origin + assetUrl.pathname);
+            } catch {
+              // Leave non-URL attributes unchanged.
+            }
+          }
+        });
+
+        return "<!doctype html>\\n" + clone.outerHTML;
+      });
+
       await writeFile(
         path.join(OUTPUT_DIR, "page.html"),
-        await page.content(),
+        safeHtml,
         "utf8",
       );
       await page.screenshot({
