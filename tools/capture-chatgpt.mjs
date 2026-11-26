@@ -699,39 +699,82 @@ async function runAnonymousProbe(page) {
   };
 
   try {
-    const composer = page.locator('textarea[data-mobile-composer-prompt]');
-    if (!(await composer.count()) || !(await composer.isVisible())) {
+    const composerSelectors = [
+      'textarea[data-mobile-composer-prompt]',
+      'textarea#prompt-textarea',
+      'textarea[data-testid="prompt-textarea"]',
+      '[contenteditable="true"][data-testid="prompt-textarea"]',
+      '[contenteditable="true"][role="textbox"]',
+      "textarea",
+    ];
+    let composer = null;
+    for (const selector of composerSelectors) {
+      const candidate = page.locator(selector).first();
+      if (await candidate.count() && await candidate.isVisible().catch(() => false)) {
+        composer = candidate;
+        result.composerSelector = selector;
+        break;
+      }
+    }
+    if (!composer) {
       result.reason = "anonymous composer not available";
       return result;
     }
 
-    const submit = page.locator("button[data-composer-submit]");
     await composer.fill(ANONYMOUS_PROBE_PROMPT);
-    await submit.waitFor({ state: "visible", timeout: 15000 });
+    const submitSelectors = [
+      "button[data-composer-submit]",
+      'button[data-testid="send-button"]',
+      'button[aria-label*="Send" i]',
+      "form button[type=submit]",
+    ];
+    let submit = null;
+    for (const selector of submitSelectors) {
+      const scope = composer.locator("xpath=ancestor::form[1]");
+      const candidates = await scope.count()
+        ? scope.locator(selector)
+        : page.locator(selector);
+      const candidate = candidates.last();
+      if (await candidate.count() && await candidate.isVisible().catch(() => false) &&
+          await candidate.isEnabled().catch(() => false)) {
+        submit = candidate;
+        result.submitSelector = selector;
+        break;
+      }
+    }
+    if (!submit) {
+      result.reason = "anonymous submit control not available";
+      return result;
+    }
+
     await submit.click({ timeout: 15000 });
     result.status = "submitted";
 
     try {
       await page.waitForFunction(() => {
-        const complete = document.querySelector(
+        const expectedText = document.body?.innerText?.includes("GPT-DIL-PROBE-OK.") || false;
+        const stopButton = [...document.querySelectorAll("button")].some((button) =>
+          /stop/i.test(button.getAttribute("aria-label") || "") && !button.disabled
+        );
+        const completeMarker = document.querySelector(
           '[data-conversation-control="message-stream-complete"], [data-conversation-control="complete"]',
         );
-        const assistantText = [...document.querySelectorAll('[data-message-role="assistant"]')]
-          .some((element) => (element.textContent || "").trim().length > 0);
-        const stopIcon = document.querySelector(
-          'button[data-composer-submit] [data-composer-stop-icon]:not([hidden])',
-        );
-        return Boolean(complete) || (assistantText && !stopIcon);
+        return expectedText && (!stopButton || Boolean(completeMarker));
       }, null, { timeout: 120000 });
       result.status = "completed";
     } catch {
       result.status = "submitted-timeout";
     }
 
-    result.assistantMessageCount = await page.locator('[data-message-role="assistant"]').count();
+    result.assistantMessageCount = await page.locator(
+      '[data-message-role="assistant"], [data-testid*="conversation-turn"]',
+    ).count();
     result.completedMarkers = await page.locator(
       '[data-conversation-control="message-stream-complete"], [data-conversation-control="complete"]',
     ).count();
+    result.expectedTextFound = await page.locator("body").innerText().then((text) =>
+      text.includes("GPT-DIL-PROBE-OK.")
+    ).catch(() => false);
     await page.waitForTimeout(3000).catch(() => {});
   } catch (error) {
     result.status = result.status === "submitted" ? "submitted-error" : "failed";
