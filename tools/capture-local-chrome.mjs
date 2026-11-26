@@ -62,7 +62,7 @@ function redactText(value) {
     .replace(/([?&](?:token|access_token|refresh_token|api_key|key|signature|sig)=)[^&\s]+/gi, "$1[REDACTED]");
 }
 
-const SECRET_KEY = /^(?:authorization|cookie|set-cookie|password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|csrf(?:[_-]?token)?|xsrf|sentinel|proof[_-]?token|token|email)$/i;
+const SECRET_KEY = /(?:token|secret|password|authorization|cookie|csrf|xsrf|signature|(?:api|client)[_-]?key|email|username|sentinel)$/i;
 
 function redactObject(value, depth = 0) {
   if (depth > 30) return "[DEPTH-LIMIT]";
