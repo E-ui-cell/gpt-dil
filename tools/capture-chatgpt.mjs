@@ -13,6 +13,8 @@ const OUTPUT_DIR = path.resolve(process.env.GPT_DIL_OUTPUT_DIR || "capture-outpu
 const INCLUDE_ASSETS = process.env.GPT_DIL_INCLUDE_ASSETS !== "false";
 const INCLUDE_SOURCE_MAPS =
   INCLUDE_ASSETS && process.env.GPT_DIL_INCLUDE_SOURCE_MAPS !== "false";
+const RUN_ANONYMOUS_PROBE = process.env.GPT_DIL_RUN_ANONYMOUS_PROBE === "true";
+const ANONYMOUS_PROBE_PROMPT = "Reply with exactly: GPT-DIL-PROBE-OK.";
 
 const MAX_ASSETS = 600;
 const MAX_ASSET_BYTES = 24 * 1024 * 1024;
@@ -160,10 +162,11 @@ function inspectRequestBody(request) {
 
 function addEndpointCandidates(text) {
   const pattern =
-    /["']((?:\/backend-api\/|\/(?:api|graphql|ces)\/)[^"'\s\\]*)["']/g;
+    /["'`]((?:\\/backend-api\\/|\\/backend-anon\\/|\\/(?:api|graphql|ces|unauth-mweb)\\/)[^"'\`\\s\\\\]*)["'`]/g;
 
   for (const match of text.matchAll(pattern)) {
-    const endpoint = match[1].replace(/\\u002f/gi, "/").slice(0, 500);
+    const endpoint = match[1].replace(/\\\\u002f/gi, "/").slice(0, 500);
+    if (/^\\/unauth-mweb\\/(?:assets|images|scripts)\\//.test(endpoint)) continue;
     endpointCandidates.add(endpoint);
   }
 }
@@ -524,6 +527,104 @@ async function collectSourceMaps(context) {
   return results;
 }
 
+async function runAnonymousProbe(page) {
+  const result = {
+    enabled: true,
+    prompt: ANONYMOUS_PROBE_PROMPT,
+    status: "unavailable",
+  };
+
+  try {
+    const composer = page.locator('textarea[data-mobile-composer-prompt]');
+    if (!(await composer.count()) || !(await composer.isVisible())) {
+      result.reason = "anonymous composer not available";
+      return result;
+    }
+
+    const submit = page.locator("button[data-composer-submit]");
+    await composer.fill(ANONYMOUS_PROBE_PROMPT);
+    await submit.waitFor({ state: "visible", timeout: 15000 });
+    await submit.click({ timeout: 15000 });
+    result.status = "submitted";
+
+    try {
+      await page.waitForFunction(() => {
+        const complete = document.querySelector(
+          '[data-conversation-control="message-stream-complete"], [data-conversation-control="complete"]',
+        );
+        const assistantText = [...document.querySelectorAll('[data-message-role="assistant"]')]
+          .some((element) => (element.textContent || "").trim().length > 0);
+        const stopIcon = document.querySelector(
+          'button[data-composer-submit] [data-composer-stop-icon]:not([hidden])',
+        );
+        return Boolean(complete) || (assistantText && !stopIcon);
+      }, null, { timeout: 120000 });
+      result.status = "completed";
+    } catch {
+      result.status = "submitted-timeout";
+    }
+
+    result.assistantMessageCount = await page.locator('[data-message-role="assistant"]').count();
+    result.completedMarkers = await page.locator(
+      '[data-conversation-control="message-stream-complete"], [data-conversation-control="complete"]',
+    ).count();
+    await page.waitForTimeout(3000).catch(() => {});
+  } catch (error) {
+    result.status = result.status === "submitted" ? "submitted-error" : "failed";
+    result.error = sanitizeText(error?.message || error);
+  }
+
+  return result;
+}
+
+function summarizeEndpoints(entries) {
+  const grouped = new Map();
+
+  for (const entry of entries) {
+    let parsed;
+    try {
+      parsed = new URL(entry.url);
+    } catch {
+      continue;
+    }
+    if (!isRelevantHost(parsed.hostname)) continue;
+
+    const key = entry.method + " " + parsed.pathname;
+    let item = grouped.get(key);
+    if (!item) {
+      item = {
+        method: entry.method,
+        path: parsed.pathname,
+        count: 0,
+        statuses: {},
+        resourceTypes: {},
+        queryKeys: new Set(),
+        requestBodyKinds: {},
+        responseBodyKinds: {},
+      };
+      grouped.set(key, item);
+    }
+
+    item.count++;
+    if (entry.status !== undefined) {
+      const status = String(entry.status);
+      item.statuses[status] = (item.statuses[status] || 0) + 1;
+    }
+    item.resourceTypes[entry.resourceType] = (item.resourceTypes[entry.resourceType] || 0) + 1;
+    for (const queryKey of entry.queryKeys || []) item.queryKeys.add(queryKey);
+
+    const requestKind = entry.requestBody?.kind;
+    if (requestKind) item.requestBodyKinds[requestKind] = (item.requestBodyKinds[requestKind] || 0) + 1;
+
+    const responseKind = entry.responseBody?.kind;
+    if (responseKind) item.responseBodyKinds[responseKind] = (item.responseBodyKinds[responseKind] || 0) + 1;
+  }
+
+  return [...grouped.values()]
+    .map((item) => ({ ...item, queryKeys: [...item.queryKeys].sort() }))
+    .sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+}
+
 async function main() {
   await mkdir(OUTPUT_DIR, { recursive: true });
 
@@ -705,6 +806,16 @@ async function main() {
     navigationError = sanitizeText(error?.message || error);
   }
 
+  let anonymousProbe = {
+    enabled: RUN_ANONYMOUS_PROBE,
+    status: RUN_ANONYMOUS_PROBE ? "not-started" : "disabled",
+  };
+
+  if (RUN_ANONYMOUS_PROBE) {
+    await page.waitForTimeout(5000).catch(() => {});
+    anonymousProbe = await runAnonymousProbe(page);
+  }
+
   // Allow lazy-loaded chunks and late requests to settle.
   await page.waitForTimeout(20000).catch(() => {});
   await Promise.allSettled([...pendingResponses]);
@@ -858,9 +969,20 @@ async function main() {
       2,
     ),
   );
+  for (const entry of network) {
+    try {
+      const parsed = new URL(entry.url);
+      if (isRelevantHost(parsed.hostname)) endpointCandidates.add(parsed.pathname);
+    } catch {}
+  }
+
   await writeFile(
     path.join(OUTPUT_DIR, "endpoints.json"),
     JSON.stringify([...endpointCandidates].sort(), null, 2),
+  );
+  await writeFile(
+    path.join(OUTPUT_DIR, "endpoint-summary.json"),
+    JSON.stringify(summarizeEndpoints(network), null, 2),
   );
   await writeFile(
     path.join(OUTPUT_DIR, "response-shapes.json"),
@@ -917,6 +1039,7 @@ async function main() {
     finishedAt: new Date().toISOString(),
     browser: browserInfo,
     navigationError,
+    anonymousProbe,
     options: {
       includeAssets: INCLUDE_ASSETS,
       includeSourceMaps: INCLUDE_SOURCE_MAPS,
@@ -940,6 +1063,7 @@ async function main() {
       scriptsObserved: scriptRecords.size,
       scriptsWithCoverage: preciseCoverage.length,
       endpointCandidates: endpointCandidates.size,
+      endpointGroups: summarizeEndpoints(network).length,
       sourceMapCandidates: sourceMapCandidates.size,
       sourceMapsFetched: sourceMaps.length,
       assetsSaved: assetByHash.size,
@@ -975,6 +1099,7 @@ async function main() {
       "Static frontend assets and exposed source maps may be included.",
       "No cookies, authorization headers, raw request bodies, raw API response bodies,",
       "browser storage values, or conversation text were exported. JSON/SSE/WebSocket shapes only.",
+      "A fixed anonymous protocol probe may be sent when enabled; no account is used.",
       "",
       "Files:",
       "- network.json: sanitized request/response metadata",
@@ -984,7 +1109,8 @@ async function main() {
       "- scripts.json: all scripts observed by the Chrome debugger",
       "- script-coverage.json: executed script/function ranges and script hashes",
       "- browser-metrics.json: Chromium performance metrics",
-      "- endpoints.json: endpoint-like strings extracted from frontend code",
+      "- endpoints.json: endpoint paths found in frontend code and actual requests",
+      "- endpoint-summary.json: method/status/body-kind summary for first-party routes",
       "- assets.json: saved asset index and SHA-256 hashes",
       "- source-maps.json: source-map discovery results",
       "- page-state.json: browser and resource timing metadata",
