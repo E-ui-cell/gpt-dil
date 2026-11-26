@@ -71,3 +71,11 @@ export function sanitizeProtocolBody(raw, contentType = "") {
       return sanitizeText(text);
     }
   }
+
+
+  return sanitizeText(text);
+}
+
+export function isSensitivePayloadKey(key) {
+  return SECRET_KEY.test(String(key));
+}
