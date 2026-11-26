@@ -470,34 +470,27 @@ function attachPage(page) {
   if (pages.has(page)) return;
   pages.add(page);
   addPending(installBridgeHook(page));
-  page.on("frameattached", (frame) => {
+  const logFrameLifecycle = (type, frame) => {
+    let pageUrl = null;
+    let frameUrl = null;
+    let name = null;
+    try { pageUrl = safeUrl(page.url()); } catch {}
+    try { frameUrl = safeUrl(frame.url()); } catch {}
+    try { name = redactText(frame.name()); } catch {}
     frameLifecycleEvents.push({
-      type: "attached",
+      type,
       at: new Date().toISOString(),
-      pageUrl: safeUrl(page.url()),
-      frameUrl: safeUrl(frame.url()),
-      name: frame.name(),
+      pageUrl,
+      frameUrl,
+      name,
     });
+  };
+  page.on("frameattached", (frame) => {
+    logFrameLifecycle("attached", frame);
     addPending(installBridgeFrame(frame));
   });
-  page.on("framenavigated", (frame) => {
-    frameLifecycleEvents.push({
-      type: "navigated",
-      at: new Date().toISOString(),
-      pageUrl: safeUrl(page.url()),
-      frameUrl: safeUrl(frame.url()),
-      name: frame.name(),
-    });
-  });
-  page.on("framedetached", (frame) => {
-    frameLifecycleEvents.push({
-      type: "detached",
-      at: new Date().toISOString(),
-      pageUrl: safeUrl(page.url()),
-      frameUrl: safeUrl(frame.url()),
-      name: frame.name(),
-    });
-  });
+  page.on("framenavigated", (frame) => logFrameLifecycle("navigated", frame));
+  page.on("framedetached", (frame) => logFrameLifecycle("detached", frame));
 
   page.on("websocket", (socket) => {
     const entry = {
