@@ -81,3 +81,14 @@ test("redacts sensitive URL-encoded fields", () => {
     },
   });
 });
+
+test("sanitizes NDJSON records that do not use SSE data prefixes", () => {
+  const output = sanitizeProtocolBody(
+    '{"type":"patch","session_id":"private","value":"visible"}\\n{"type":"done"}',
+    "application/x-ndjson",
+  );
+
+  assert.match(output, /"session_id":"\\[REDACTED\\]"/);
+  assert.match(output, /"value":"visible"/);
+  assert.doesNotMatch(output, /private/);
+});
