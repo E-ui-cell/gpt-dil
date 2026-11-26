@@ -747,7 +747,7 @@ async function main() {
       "- console.json: sanitized browser warnings and errors",
       "- capture.json: run summary and privacy settings",
       "- page.html: sanitized DOM structure; inline scripts and transient attributes removed",
-      "- assets/: public JavaScript, CSS, static data and source maps, without raw HTML"
+      "- assets/: public JavaScript, CSS, static data and source maps, without raw HTML",
       "",
       "This does not reveal private server-side prompts, model internals,",
       "or authenticated conversation payloads.",
