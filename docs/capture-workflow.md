@@ -38,12 +38,13 @@ Local capture includes:
 
 - Actual JSON request and response bodies, including message and tool payloads
 - Completed text/event-stream responses and their event data
+- Selected image, audio, video, PDF and binary responses (32 MB per response limit)
 - Sent and received WebSocket text frames
 - Request/response status, headers names, content types and timings
 - Sanitized DOM snapshots, resource lists and browser diagnostics
 - Cookie names/attributes, storage key names and IndexedDB database names
 
-Authorization/cookie header values, cookie values, common credential fields, and multipart file contents are excluded. Conversation text is deliberately retained for protocol analysis.
+Authorization/cookie header values, cookie values, common credential fields, and multipart upload contents are excluded. Selected binary responses are saved locally. Conversation text is deliberately retained for protocol analysis.
 
 **Local captures are private. They can contain your conversations. Never upload them to this public repository or its Releases.** Share only a copy you have inspected and redacted.
 
