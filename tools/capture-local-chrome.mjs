@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { mkdir, writeFile, appendFile, readFile } from "node:fs/promises";
+import { sanitizePayload, sanitizeProtocolBody, sanitizeText as sanitizePayloadText } from "./payload-sanitizer.mjs";
 
 const CDP_URL = process.env.GPT_DIL_CDP_URL || "http://127.0.0.1:9222";
 const BASE_DIR = path.resolve(
@@ -63,74 +64,15 @@ function safeUrl(rawUrl) {
 }
 
 function redactText(value) {
-  return String(value ?? "")
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
-    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "[SECRET]")
-    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g, "[JWT]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL]")
-    .replace(/([?&](?:token|access_token|refresh_token|api_key|key|signature|sig)=)[^&\s]+/gi, "$1[REDACTED]");
+  return sanitizePayloadText(value);
 }
 
-const SECRET_KEY = /token|secret|password|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|api.?key|email|username|sentinel|session|auth|bearer|jwt|phone/i;
-
 function redactObject(value, depth = 0) {
-  if (depth > 30) return "[DEPTH-LIMIT]";
-  if (Array.isArray(value)) return value.map((item) => redactObject(item, depth + 1));
-  if (value && typeof value === "object") {
-    const output = {};
-    for (const [key, item] of Object.entries(value)) {
-      output[key] = SECRET_KEY.test(key)
-        ? "[REDACTED]"
-        : redactObject(item, depth + 1);
-    }
-    return output;
-  }
-  if (typeof value === "string") return redactText(value);
-  return value;
+  return sanitizePayload(value, depth);
 }
 
 function sanitizeBody(raw, contentType) {
-  const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
-  if (/multipart\/form-data/i.test(contentType)) {
-    const names = [...text.matchAll(/name="([^"]+)"/g)].map((match) => match[1]);
-    return {
-      kind: "multipart-metadata",
-      bytes: Buffer.byteLength(text),
-      fieldNames: [...new Set(names)],
-      values: "not exported",
-      reason: "file/form content can contain unrelated private documents",
-    };
-  }
-
-  if (/json|\+json/i.test(contentType)) {
-    try {
-      return redactObject(JSON.parse(text));
-    } catch {
-      return redactText(text);
-    }
-  }
-
-  if (/x-www-form-urlencoded/i.test(contentType)) {
-    const output = {};
-    for (const [key, value] of new URLSearchParams(text)) {
-      output[key] = SECRET_KEY.test(key) ? "[REDACTED]" : redactText(value);
-    }
-    return output;
-  }
-
-  if (/text\/event-stream|ndjson/i.test(contentType)) {
-    return text.split(/\r?\n/).map((line) => {
-      if (!line.startsWith("data:")) return redactText(line);
-      const data = line.slice(5).trim();
-      try {
-        return "data: " + JSON.stringify(redactObject(JSON.parse(data)));
-      } catch {
-        return "data: " + redactText(data);
-      }
-    }).join("\n");
-  }
-
-  return redactText(text);
+  return sanitizeProtocolBody(raw, contentType);
 }
 
 function bodyExtension(contentType) {
