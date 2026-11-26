@@ -1,0 +1,49 @@
+name: Validate GPT-DIL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/**"
+      - "Capture-Local.ps1"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "tools/**"
+      - "Capture-Local.ps1"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check tools/capture-chatgpt.mjs
+          node --check tools/capture-local-chrome.mjs
+
+      - name: Check PowerShell syntax
+        shell: pwsh
+        run: |
+          $files = @("Capture-Local.ps1")
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              Write-Error ($errors | Out-String)
+              exit 1
+            }
+          }
