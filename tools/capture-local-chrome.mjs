@@ -131,6 +131,41 @@ function bodyExtension(contentType) {
   if (/text\//i.test(contentType)) return "txt";
   return "bin";
 }
+async function saveBinaryResponse(id, raw, contentType) {
+  const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+  if (buffer.length > MAX_BODY_BYTES) {
+    return { skipped: "over-size-limit", bytes: buffer.length };
+  }
+  const mime = contentType.split(";")[0].trim().toLowerCase();
+  const extensions = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/avif": "avif",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "application/pdf": "pdf",
+    "application/zip": "zip",
+  };
+  const extension = extensions[mime] || "bin";
+  const directory = path.join(OUTPUT_DIR, "responses");
+  await mkdir(directory, { recursive: true });
+  const filename = String(id).padStart(6, "0") + "." + extension;
+  await writeFile(path.join(directory, filename), buffer);
+  return {
+    path: path.posix.join("responses", filename),
+    bytes: buffer.length,
+    sha256: createHash("sha256").update(buffer).digest("hex"),
+    contentType: mime,
+    binary: true,
+  };
+}
+
 async function saveBody(kind, id, raw, contentType) {
   if (raw == null) return null;
   const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(String(raw), "utf8");
@@ -251,8 +286,13 @@ async function recordResponse(response) {
     if (headers[name]) record.responseHeaders[name] = redactText(headers[name]);
   }
 
-  if (!/(?:json|\+json|text\/event-stream|application\/x-ndjson|text\/plain|application\/xml)/i.test(contentType)) {
-    record.responseBody = { skipped: "non-text-response", contentType };
+  const isTextResponse =
+    /(?:json|\+json|text\/event-stream|application\/x-ndjson|text\/plain|application\/xml)/i.test(contentType);
+  const isUsefulBinary =
+    /^(?:image\/|audio\/|video\/|application\/(?:pdf|octet-stream|zip))/i.test(contentType);
+
+  if (!isTextResponse && !isUsefulBinary) {
+    record.responseBody = { skipped: "non-protocol-binary", contentType };
     return;
   }
 
@@ -263,9 +303,9 @@ async function recordResponse(response) {
   }
 
   try {
-    const body = await response.body();
-    record.responseBytes = body.length;
-    record.responseBody = await saveBody("responses", record.id, body, contentType);
+    record.responseBody = isTextResponse
+      ? await saveBody("responses", record.id, body, contentType)
+      : await saveBinaryResponse(record.id, body, contentType);
   } catch (error) {
     record.responseBodyError = redactText(error?.message || error);
   }
@@ -460,7 +500,8 @@ async function writeReport() {
     requests: network.length,
     responses: network.filter((item) => item.status !== undefined).length,
     requestBodies: network.filter((item) => item.requestBody && typeof item.requestBody === "string").length,
-    responseBodies: network.filter((item) => item.responseBody && typeof item.responseBody === "string").length,
+    responseBodies: network.filter((item) => item.responseBody && (typeof item.responseBody === "string" || item.responseBody.path)).length,
+    binaryResponseBodies: network.filter((item) => item.responseBody?.binary).length,
     websocketConnections: websocketRecords.length,
     websocketFrames: websocketRecords.reduce((sum, item) => sum + item.sentFrames + item.receivedFrames, 0),
     pagesObserved: pages.size,
@@ -486,7 +527,8 @@ async function writeReport() {
       "Keep this folder on your own machine. Do not upload it to the public GitHub repository or Releases.",
       "",
       "requests/: request payloads with credential-like fields redacted",
-      "responses/: JSON, text and streaming response bodies with credential-like fields redacted",
+      "responses/: JSON, text, streaming and selected binary response bodies",
+      "Multipart upload file contents and other binary request bodies are not recorded.",
       "websockets/: sent and received WebSocket frames",
       "snapshots/: sanitized DOM snapshots and browser/storage metadata",
       "network.json: request/response index and timing",
