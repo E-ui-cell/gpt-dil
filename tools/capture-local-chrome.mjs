@@ -579,6 +579,13 @@ async function writeReport() {
     framesObserved: [...pages].reduce((sum, page) => sum + (page.isClosed() ? 0 : page.frames().length), 0),
     workersObserved: [...pages].reduce((sum, page) => sum + (page.isClosed() ? 0 : page.workers().length), 0),
     pendingTasksAtFinalize: pending.size,
+    limits: {
+      maxBodyBytes: MAX_BODY_BYTES,
+      maxDilBridgeEvents: MAX_DIL_BRIDGE_EVENTS,
+      maxDilBridgeLogBytes: MAX_DIL_BRIDGE_LOG_BYTES,
+      maxDilBridgeEventBytes: MAX_DIL_BRIDGE_EVENT_BYTES,
+      maxFinalizeWaitMs: MAX_FINALIZE_WAIT_MS,
+    },
     privacy: {
       outputIsLocalOnly: true,
       authorizationAndCookieHeaderValues: "never recorded",
