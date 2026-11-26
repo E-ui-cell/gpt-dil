@@ -724,12 +724,16 @@ async function main() {
       sessionStorageKeys: (() => {
         try { return Object.keys(sessionStorage).sort(); } catch { return []; }
       })(),
-      indexedDB: await indexedDB.databases().then((items) =>
-        items.map((item) => ({ name: item.name, version: item.version })),
-      ).catch(() => []),
-      serviceWorkers: await navigator.serviceWorker.getRegistrations().then((items) =>
-        items.map((item) => item.scope),
-      ).catch(() => []),
+      indexedDB: await (typeof indexedDB.databases === "function"
+        ? indexedDB.databases().then((items) =>
+            items.map((item) => ({ name: item.name, version: item.version })),
+          ).catch(() => [])
+        : Promise.resolve([])),
+      serviceWorkers: await (navigator.serviceWorker?.getRegistrations
+        ? navigator.serviceWorker.getRegistrations().then((items) =>
+            items.map((item) => item.scope),
+          ).catch(() => [])
+        : Promise.resolve([])),
       resources: performance.getEntriesByType("resource").map((entry) => ({
         name: entry.name,
         initiatorType: entry.initiatorType,
@@ -1012,4 +1016,4 @@ if (fatalError) {
   await writeFile(path.join(OUTPUT_DIR, "fatal-error.txt"), fatalError, "utf8");
 }
 
-if (navigationError || fatalError) process.exitCode = 1;
+if (fatalError) process.exitCode = 1;
