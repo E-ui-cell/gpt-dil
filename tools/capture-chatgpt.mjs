@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { sanitizePayload, sanitizeProtocolBody, sanitizeText as sanitizePayloadText } from "./payload-sanitizer.mjs";
+import { analyzeCaptureAssets } from "./analyze-bundles.mjs";
 
 const TARGET_URL = "https://chatgpt.com/";
 const BROWSER_NAME = process.env.GPT_DIL_BROWSER || "chromium";
@@ -1211,6 +1212,12 @@ async function main() {
 
   const sourceMaps = await collectSourceMaps(context);
   await Promise.allSettled([...pendingResponses]);
+  const bundleFindings = await analyzeCaptureAssets(OUTPUT_DIR);
+  await writeFile(
+    path.join(OUTPUT_DIR, "bundle-findings.json"),
+    JSON.stringify(bundleFindings, null, 2),
+    "utf8",
+  );
 
   await writeFile(
     path.join(OUTPUT_DIR, "network.json"),
@@ -1356,6 +1363,9 @@ async function main() {
       endpointGroups: summarizeEndpoints(network).length,
       framesObserved: frameInventory.length,
       workersObserved: workerInventory.length,
+      bundleFilesScanned: bundleFindings.filesScanned,
+      bundleSymbolMatches: bundleFindings.totalSymbolMatches,
+      bundleRouteReferences: bundleFindings.routeReferences.length,
       sourceMapCandidates: sourceMapCandidates.size,
       sourceMapsFetched: sourceMaps.length,
       assetsSaved: assetByHash.size,
@@ -1412,6 +1422,7 @@ async function main() {
       "- page-state.json: browser and resource timing metadata",
       "- frames.json and frames/: frame tree, scripts, resource timings and sanitized DOM snapshots",
       "- workers.json: dedicated and service worker script URLs",
+      "- bundle-findings.json: DIL runtime symbols, endpoint references and source-map source names",
       "- console.json: sanitized browser warnings and errors",
       "- capture.json: run summary and privacy settings",
       "- page.html: sanitized DOM structure; inline scripts and transient attributes removed",
