@@ -1,41 +1,33 @@
 name: ChatGPT Capture
 
 on:
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       runner:
         description: Runner operating system
         type: choice
         required: true
-        default: windows-latest
+        default: both
         options:
           - windows-latest
           - ubuntu-latest
           - both
-      include_assets:
-        description: Save sanitized DOM structure and public frontend assets
-        type: boolean
-        required: true
-        default: true
-      include_source_maps:
-        description: Discover and save exposed JavaScript source maps
-        type: boolean
-        required: true
-        default: true
 
 permissions:
   contents: read
 
-jobs:
-  capture:
-    name: Capture (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ inputs.runner == 'both' && fromJSON('["windows-latest","ubuntu-latest"]') || fromJSON(format('["{0}"]', inputs.runner)) }}
+concurrency:
+  group: chatgpt-capture
+  cancel-in-progress: false
 
+jobs:
+  capture-windows:
+    name: Capture on Windows
+    if: github.event_name == 'schedule' || inputs.runner == 'windows-latest' || inputs.runner == 'both'
+    runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -51,26 +43,121 @@ jobs:
       - name: Install Playwright
         run: npm install --no-save --no-audit --no-fund playwright
 
-      - name: Install Chromium (Windows)
-        if: runner.os == 'Windows'
+      - name: Install Chromium
         run: npx playwright install chromium
 
-      - name: Install Chromium (Linux)
-        if: runner.os == 'Linux'
+      - name: Capture ChatGPT public frontend
+        env:
+          GPT_DIL_OUTPUT_DIR: capture-output
+          GPT_DIL_INCLUDE_ASSETS: "true"
+          GPT_DIL_INCLUDE_SOURCE_MAPS: "true"
+        run: node tools/capture-chatgpt.mjs
+
+      - name: Upload Windows capture
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: chatgpt-capture-windows
+          path: capture-output/
+          if-no-files-found: warn
+          retention-days: 14
+
+  capture-linux:
+    name: Capture on Linux
+    if: github.event_name == 'schedule' || inputs.runner == 'ubuntu-latest' || inputs.runner == 'both'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Check collector syntax
+        run: node --check tools/capture-chatgpt.mjs
+
+      - name: Install Playwright
+        run: npm install --no-save --no-audit --no-fund playwright
+
+      - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Capture ChatGPT public frontend
         env:
           GPT_DIL_OUTPUT_DIR: capture-output
-          GPT_DIL_INCLUDE_ASSETS: ${{ inputs.include_assets }}
-          GPT_DIL_INCLUDE_SOURCE_MAPS: ${{ inputs.include_source_maps }}
+          GPT_DIL_INCLUDE_ASSETS: "true"
+          GPT_DIL_INCLUDE_SOURCE_MAPS: "true"
         run: node tools/capture-chatgpt.mjs
 
-      - name: Upload capture
+      - name: Upload Linux capture
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: chatgpt-capture-${{ runner.os }}-${{ github.run_id }}
+          name: chatgpt-capture-linux
           path: capture-output/
           if-no-files-found: warn
-          retention-days: 3
+          retention-days: 14
+
+  publish-release:
+    name: Publish capture release
+    needs:
+      - capture-windows
+      - capture-linux
+    if: always() && !cancelled() && (needs.capture-windows.result == 'success' || needs.capture-linux.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows capture
+        if: needs.capture-windows.result == 'success'
+        uses: actions/download-artifact@v7
+        with:
+          name: chatgpt-capture-windows
+          path: release-input/windows
+
+      - name: Download Linux capture
+        if: needs.capture-linux.result == 'success'
+        uses: actions/download-artifact@v7
+        with:
+          name: chatgpt-capture-linux
+          path: release-input/linux
+
+      - name: Package captures
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          if [ -d release-input/windows ]; then
+            tar -czf release-assets/chatgpt-capture-windows.tar.gz -C release-input/windows .
+          fi
+          if [ -d release-input/linux ]; then
+            tar -czf release-assets/chatgpt-capture-linux.tar.gz -C release-input/linux .
+          fi
+          cat > release-assets/manifest.json <<EOF
+          {
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "commit": "${{ github.sha }}",
+            "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "windows": $([ -d release-input/windows ] && echo true || echo false),
+            "linux": $([ -d release-input/linux ] && echo true || echo false),
+            "scope": "unauthenticated public frontend; payload schemas only"
+          }
+          EOF
+          TAG="capture-${{ github.run_id }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/*               --title "ChatGPT capture #${{ github.run_number }}"               --notes "Automated Windows/Linux public-frontend capture. No account login, cookies, authorization headers, raw conversation bodies, or private user data are collected."
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Add release link to summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Published [${{ steps.package.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.package.outputs.tag }})" >> "$GITHUB_STEP_SUMMARY"
