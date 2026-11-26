@@ -92,6 +92,14 @@ function isTextProtocolContentType(contentType) {
   return /json|\\+json|x-www-form-urlencoded|multipart\\/form-data|text\\/|application\\/xml/i.test(contentType);
 }
 
+function resolveSanitizedUrl(reference, baseUrl) {
+  try {
+    return sanitizeUrl(new URL(reference, baseUrl).href);
+  } catch {
+    return null;
+  }
+}
+
 function sanitizeText(value) {
   return String(value ?? "")
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
@@ -311,6 +319,9 @@ function isStaticTextAsset(rawUrl, contentType, resourceType) {
   const pathname = url.pathname.toLowerCase();
   if (
     pathname.startsWith("/backend-api/") ||
+    pathname.startsWith("/backend-anon/") ||
+    (pathname.startsWith("/unauth-mweb/") &&
+      !/^\\/unauth-mweb\\/(?:assets|images|scripts)\\//i.test(pathname)) ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next/data/") ||
     pathname.startsWith("/ces/") ||
@@ -804,7 +815,7 @@ async function main() {
           scriptId: event.scriptId,
           url: sanitizeUrl(event.url || ""),
           hash: event.hash || null,
-          sourceMapURL: event.sourceMapURL ? sanitizeUrl(new URL(event.sourceMapURL, event.url || TARGET_URL).href) : null,
+          sourceMapURL: event.sourceMapURL ? resolveSanitizedUrl(event.sourceMapURL, event.url || TARGET_URL) : null,
           startLine: event.startLine,
           endLine: event.endLine,
         });
