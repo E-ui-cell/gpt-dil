@@ -27,7 +27,7 @@ jobs:
     name: Capture on Windows
     if: github.event_name == 'schedule' || inputs.runner == 'windows-latest' || inputs.runner == 'both'
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -58,7 +58,8 @@ jobs:
 
       - name: Capture ChatGPT public frontend
         env:
-          GPT_DIL_OUTPUT_DIR: capture-output
+          GPT_DIL_BROWSER: chromium
+          GPT_DIL_OUTPUT_DIR: capture-output/chromium
           GPT_DIL_INCLUDE_ASSETS: "true"
           GPT_DIL_INCLUDE_SOURCE_MAPS: "true"
         run: node tools/capture-chatgpt.mjs
@@ -92,15 +93,29 @@ jobs:
       - name: Install Playwright
         run: npm install --no-save --no-audit --no-fund playwright
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
 
-      - name: Capture ChatGPT public frontend
+      - name: Capture ChatGPT public frontend in all Linux engines
         env:
-          GPT_DIL_OUTPUT_DIR: capture-output
           GPT_DIL_INCLUDE_ASSETS: "true"
           GPT_DIL_INCLUDE_SOURCE_MAPS: "true"
-        run: node tools/capture-chatgpt.mjs
+        shell: bash
+        run: |
+          mkdir -p capture-output
+          successes=0
+          for engine in chromium firefox webkit; do
+            echo "Capturing with $engine"
+            export GPT_DIL_BROWSER="$engine"
+            export GPT_DIL_OUTPUT_DIR="capture-output/$engine"
+            if node tools/capture-chatgpt.mjs; then
+              successes=$((successes + 1))
+            else
+              echo "$engine capture failed; continuing with remaining engines."
+            fi
+          done
+          printf "Successful browser engines: %s/3\\n" "$successes" > capture-output/browser-matrix.txt
+          if [ "$successes" -eq 0 ]; then exit 1; fi
 
       - name: Upload Linux capture
         if: always()
