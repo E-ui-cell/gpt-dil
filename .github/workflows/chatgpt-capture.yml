@@ -107,6 +107,7 @@ jobs:
           node --check tools/capture-local-chrome.mjs
           node --check tools/payload-sanitizer.mjs
           node --check tools/analyze-dil-bridge.mjs
+          node --check tools/analyze-bundles.mjs
           node --check tools/dil-bridge-hook.js
           node --test
 
