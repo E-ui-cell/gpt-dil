@@ -321,7 +321,7 @@ function isStaticTextAsset(rawUrl, contentType, resourceType) {
     pathname.startsWith("/backend-api/") ||
     pathname.startsWith("/backend-anon/") ||
     (pathname.startsWith("/unauth-mweb/") &&
-      !/^\\/unauth-mweb\\/(?:assets|images|scripts)\\//i.test(pathname)) ||
+      !/^\/unauth-mweb\/(?:assets|images|scripts)\//i.test(pathname)) ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next/data/") ||
     pathname.startsWith("/ces/") ||
