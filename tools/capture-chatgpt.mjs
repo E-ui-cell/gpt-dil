@@ -15,6 +15,7 @@ const MAX_ASSET_BYTES = 24 * 1024 * 1024;
 const MAX_TOTAL_ASSET_BYTES = 300 * 1024 * 1024;
 const MAX_SOURCE_MAPS = 200;
 const MAX_JSON_RESPONSE_BYTES = 6 * 1024 * 1024;
+const MAX_REQUEST_SHAPE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_ASSET_HOSTS = [
   "chatgpt.com",
   "openai.com",
@@ -134,6 +135,10 @@ function inspectRequestBody(request) {
   if (body == null) return undefined;
 
   const bytes = Buffer.byteLength(body, "utf8");
+  if (bytes > MAX_REQUEST_SHAPE_BYTES) {
+    return { kind: "omitted", bytes, reason: "over-size-limit" };
+  }
+
   try {
     const parsed = JSON.parse(body);
     return {
@@ -705,7 +710,7 @@ async function main() {
       requestHeadersExported: false,
       responseHeaders: "allowlisted metadata only; Set-Cookie excluded",
       requestBodies: "JSON structure and value types only; values omitted",
-      apiResponseBodies: "not collected",
+      apiResponseBodies: "JSON structure only; values omitted; other bodies not collected",
       conversationText: "not collected",
       browserStorage: "not read",
       rawHar: "not generated",
@@ -724,8 +729,8 @@ async function main() {
       "This run used a fresh, unauthenticated browser context.",
       "Network records contain URL paths, methods, statuses and payload shapes only.",
       "Static frontend assets and exposed source maps may be included.",
-      "No cookies, authorization headers, raw request bodies, API response bodies,",
-      "browser storage, or conversation text were exported.",
+      "No cookies, authorization headers, raw request bodies, raw API response bodies,",
+      "browser storage, or conversation text were exported. JSON response shapes only.",
       "",
       "Files:",
       "- network.json: sanitized request/response metadata",
@@ -737,7 +742,8 @@ async function main() {
       "- page-state.json: browser and resource timing metadata",
       "- console.json: sanitized browser warnings and errors",
       "- capture.json: run summary and privacy settings",
-      "- assets/: public HTML, JavaScript, CSS, static data and source maps",
+      "- page.html: sanitized DOM structure; inline scripts and transient attributes removed",
+      "- assets/: public JavaScript, CSS, static data and source maps, without raw HTML"
       "",
       "This does not reveal private server-side prompts, model internals,",
       "or authenticated conversation payloads.",
