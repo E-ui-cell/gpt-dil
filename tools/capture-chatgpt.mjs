@@ -477,6 +477,8 @@ async function main() {
 
       record.status = response.status();
       record.responseUrl = sanitizeUrl(response.url());
+      record.responseAtMs = Date.now() - startedAt.getTime();
+      record.durationMs = Math.max(0, record.responseAtMs - record.atMs);
 
       const headers = await response.allHeaders().catch(() => ({}));
       record.responseHeaders = {};
@@ -509,6 +511,8 @@ async function main() {
     const record = requestRecords.get(request);
     if (record) {
       record.failure = sanitizeText(request.failure()?.errorText || "request failed");
+      record.failureAtMs = Date.now() - startedAt.getTime();
+      record.durationMs = Math.max(0, record.failureAtMs - record.atMs);
     }
   });
 
