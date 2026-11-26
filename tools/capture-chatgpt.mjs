@@ -1053,7 +1053,7 @@ async function main() {
       await mkdir(frameDirectory, { recursive: true });
       for (const [index, frame] of page.frames().entries()) {
         try {
-          const frameState = await frame.evaluate(() => {
+          const frameState = await frame.evaluate(async () => {
             const clone = document.documentElement.cloneNode(true);
             clone.querySelectorAll("script").forEach((script) => {
               script.textContent = script.src ? "" : "[inline script omitted]";
@@ -1083,11 +1083,23 @@ async function main() {
                 } catch {}
               }
             });
+            let databases = [];
+            try {
+              databases = (await indexedDB.databases()).map((db) => ({ name: db.name, version: db.version }));
+            } catch {}
+            let serviceWorkers = [];
+            try {
+              serviceWorkers = (await navigator.serviceWorker.getRegistrations()).map((registration) => registration.scope);
+            } catch {}
             return {
               title: document.title,
               url: location.origin + location.pathname,
               readyState: document.readyState,
               scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
+              localStorageKeys: (() => { try { return Object.keys(localStorage).sort(); } catch { return []; } })(),
+              sessionStorageKeys: (() => { try { return Object.keys(sessionStorage).sort(); } catch { return []; } })(),
+              indexedDB: databases,
+              serviceWorkers,
               resources: performance.getEntriesByType("resource").map((entry) => ({
                 name: entry.name,
                 initiatorType: entry.initiatorType,
@@ -1108,6 +1120,10 @@ async function main() {
             title: frameState.title,
             readyState: frameState.readyState,
             scripts: frameState.scripts.map(sanitizeUrl),
+            localStorageKeys: frameState.localStorageKeys,
+            sessionStorageKeys: frameState.sessionStorageKeys,
+            indexedDB: frameState.indexedDB,
+            serviceWorkers: frameState.serviceWorkers.map(sanitizeUrl),
             resources: frameState.resources.map((resource) => ({
               ...resource,
               name: sanitizeUrl(resource.name),
