@@ -857,12 +857,19 @@ async function main() {
   const page = await context.newPage();
   page.setDefaultNavigationTimeout(60000);
   const recordFrameLifecycle = (type, frame) => {
+    let url = null;
+    let parentUrl = null;
+    try { url = sanitizeUrl(frame.url()); } catch {}
+    try {
+      const parent = frame.parentFrame();
+      if (parent) parentUrl = sanitizeUrl(parent.url());
+    } catch {}
     frameLifecycle.push({
       type,
       atMs: Date.now() - startedAt.getTime(),
-      name: frame.name(),
-      url: sanitizeUrl(frame.url()),
-      parentUrl: frame.parentFrame() ? sanitizeUrl(frame.parentFrame().url()) : null,
+      name: sanitizeText(frame.name()),
+      url,
+      parentUrl,
     });
   };
   page.on("frameattached", (frame) => recordFrameLifecycle("attached", frame));
