@@ -15,6 +15,7 @@ const MAX_ASSET_BYTES = 24 * 1024 * 1024;
 const MAX_TOTAL_ASSET_BYTES = 300 * 1024 * 1024;
 const MAX_SOURCE_MAPS = 200;
 const MAX_JSON_RESPONSE_BYTES = 6 * 1024 * 1024;
+const MAX_EVENT_STREAM_BYTES = 24 * 1024 * 1024;
 const MAX_REQUEST_SHAPE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_ASSET_HOSTS = [
   "chatgpt.com",
@@ -26,6 +27,8 @@ const ALLOWED_ASSET_HOSTS = [
 const startedAt = new Date();
 const network = [];
 const consoleEvents = [];
+const websocketRecords = [];
+const scriptRecords = new Map();
 const endpointCandidates = new Set();
 const sourceMapCandidates = new Map();
 const assetByHash = new Map();
@@ -270,6 +273,71 @@ function isStaticTextAsset(rawUrl, contentType, resourceType) {
   );
 }
 
+function summarizeEventStream(body) {
+  const text = body.toString("utf8");
+  const eventTypes = new Map();
+  const dataShapes = new Map();
+  let currentEvent = "message";
+  let eventCount = 0;
+  let doneMarker = false;
+
+  for (const line of text.split(/\\r?\\n/)) {
+    if (line.startsWith("event:")) {
+      currentEvent = line.slice(6).trim() || "message";
+      continue;
+    }
+    if (!line.startsWith("data:")) continue;
+
+    const data = line.slice(5).trim();
+    if (data === "[DONE]") {
+      doneMarker = true;
+      continue;
+    }
+
+    eventCount++;
+    eventTypes.set(currentEvent, (eventTypes.get(currentEvent) || 0) + 1);
+    let shape;
+    try {
+      shape = describeShape(JSON.parse(data));
+    } catch {
+      shape = "string";
+    }
+    const key = JSON.stringify(shape);
+    const existing = dataShapes.get(key);
+    if (existing) existing.count++;
+    else dataShapes.set(key, { shape, count: 1 });
+  }
+
+  return {
+    kind: "event-stream",
+    bytes: body.length,
+    eventCount,
+    eventTypes: [...eventTypes.entries()].map(([name, count]) => ({ name, count })),
+    dataShapes: [...dataShapes.values()],
+    doneMarker,
+  };
+}
+
+function summarizeWebSocketFrame(frame) {
+  const payload = frame?.payload;
+  if (Buffer.isBuffer(payload)) {
+    return { type: "binary", bytes: payload.length };
+  }
+  const value = String(payload ?? "");
+  try {
+    return {
+      type: "json",
+      bytes: Buffer.byteLength(value, "utf8"),
+      shape: describeShape(JSON.parse(value)),
+    };
+  } catch {
+    return {
+      type: "text",
+      bytes: Buffer.byteLength(value, "utf8"),
+    };
+  }
+}
+
 async function processStaticResponse(response, record) {
   const request = response.request();
   const rawUrl = response.url();
@@ -326,6 +394,33 @@ async function processStaticResponse(response, record) {
         bytes: body.length,
       };
     }
+    return;
+  }
+
+  const isEventStream =
+    /text\\/event-stream|application\\/x-ndjson/i.test(contentType);
+
+  if (!isStatic && isEventStream) {
+    const declaredLength = Number(headers["content-length"] || 0);
+    if (declaredLength > MAX_EVENT_STREAM_BYTES) {
+      record.responseBody = {
+        kind: "event-stream",
+        skipped: "over-size-limit",
+        bytes: declaredLength,
+      };
+      return;
+    }
+
+    const body = await response.body();
+    if (!body.length || body.length > MAX_EVENT_STREAM_BYTES) {
+      record.responseBody = {
+        kind: "event-stream",
+        skipped: "empty-or-over-size-limit",
+        bytes: body.length,
+      };
+      return;
+    }
+    record.responseBody = summarizeEventStream(body);
     return;
   }
 
@@ -447,7 +542,36 @@ async function main() {
   const page = await context.newPage();
   page.setDefaultNavigationTimeout(60000);
 
-  page.on("request", (request) => {
+  let cdpSession;
+  let preciseCoverage = [];
+  let browserMetrics = [];
+  try {
+    cdpSession = await context.newCDPSession(page);
+    await cdpSession.send("Debugger.enable");
+    cdpSession.on("Debugger.scriptParsed", (event) => {
+      scriptRecords.set(event.scriptId, {
+        scriptId: event.scriptId,
+        url: sanitizeUrl(event.url || ""),
+        hash: event.hash || null,
+        sourceMapURL: event.sourceMapURL ? sanitizeUrl(new URL(event.sourceMapURL, event.url || TARGET_URL).href) : null,
+        startLine: event.startLine,
+        endLine: event.endLine,
+      });
+    });
+    await cdpSession.send("Profiler.enable");
+    await cdpSession.send("Profiler.startPreciseCoverage", {
+      callCount: false,
+      detailed: true,
+    });
+    await cdpSession.send("Performance.enable");
+  } catch (error) {
+    consoleEvents.push({
+      type: "cdp-setup-error",
+      message: sanitizeText(error?.message || error),
+    });
+  }
+
+  context.on("request", (request) => {
     const rawUrl = request.url();
     let url;
     try {
@@ -472,7 +596,7 @@ async function main() {
     requestRecords.set(request, record);
   });
 
-  page.on("response", (response) => {
+  context.on("response", (response) => {
     const task = (async () => {
       const record = requestRecords.get(response.request());
       if (!record) return;
@@ -509,13 +633,37 @@ async function main() {
     pendingResponses.add(task);
   });
 
-  page.on("requestfailed", (request) => {
+  context.on("requestfailed", (request) => {
     const record = requestRecords.get(request);
     if (record) {
       record.failure = sanitizeText(request.failure()?.errorText || "request failed");
       record.failureAtMs = Date.now() - startedAt.getTime();
       record.durationMs = Math.max(0, record.failureAtMs - record.atMs);
     }
+  });
+
+  page.on("websocket", (socket) => {
+    const entry = {
+      url: sanitizeUrl(socket.url()),
+      openedAtMs: Date.now() - startedAt.getTime(),
+      sentFrames: 0,
+      receivedFrames: 0,
+      sentShapes: [],
+      receivedShapes: [],
+    };
+    websocketRecords.push(entry);
+
+    socket.on("framesent", (frame) => {
+      entry.sentFrames++;
+      if (entry.sentShapes.length < 100) entry.sentShapes.push(summarizeWebSocketFrame(frame));
+    });
+    socket.on("framereceived", (frame) => {
+      entry.receivedFrames++;
+      if (entry.receivedShapes.length < 200) entry.receivedShapes.push(summarizeWebSocketFrame(frame));
+    });
+    socket.on("close", () => {
+      entry.closedAtMs = Date.now() - startedAt.getTime();
+    });
   });
 
   page.on("console", (message) => {
@@ -553,6 +701,18 @@ async function main() {
       platform: navigator.platform,
       language: navigator.language,
       scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
+      localStorageKeys: (() => {
+        try { return Object.keys(localStorage).sort(); } catch { return []; }
+      })(),
+      sessionStorageKeys: (() => {
+        try { return Object.keys(sessionStorage).sort(); } catch { return []; }
+      })(),
+      indexedDB: await indexedDB.databases().then((items) =>
+        items.map((item) => ({ name: item.name, version: item.version })),
+      ).catch(() => []),
+      serviceWorkers: await navigator.serviceWorker.getRegistrations().then((items) =>
+        items.map((item) => item.scope),
+      ).catch(() => []),
       resources: performance.getEntriesByType("resource").map((entry) => ({
         name: entry.name,
         initiatorType: entry.initiatorType,
@@ -625,6 +785,32 @@ async function main() {
     });
   }
 
+  if (cdpSession) {
+    try {
+      const coverage = await cdpSession.send("Profiler.takePreciseCoverage");
+      preciseCoverage = coverage.result.map((entry) => ({
+        ...(scriptRecords.get(entry.scriptId) || {
+          scriptId: entry.scriptId,
+          url: sanitizeUrl(entry.url || ""),
+        }),
+        functions: entry.functions.map((fn) => ({
+          functionName: fn.functionName,
+          isBlockCoverage: fn.isBlockCoverage,
+          ranges: fn.ranges,
+        })),
+      }));
+      const metrics = await cdpSession.send("Performance.getMetrics");
+      browserMetrics = metrics.metrics;
+      await cdpSession.send("Profiler.stopPreciseCoverage");
+    } catch (error) {
+      consoleEvents.push({
+        type: "cdp-coverage-error",
+        message: sanitizeText(error?.message || error),
+      });
+    }
+    await cdpSession.detach().catch(() => {});
+  }
+
   const sourceMaps = await collectSourceMaps(context);
   await Promise.allSettled([...pendingResponses]);
 
@@ -671,6 +857,18 @@ async function main() {
     JSON.stringify([...assetByHash.values()], null, 2),
   );
   await writeFile(
+    path.join(OUTPUT_DIR, "websockets.json"),
+    JSON.stringify(websocketRecords, null, 2),
+  );
+  await writeFile(
+    path.join(OUTPUT_DIR, "script-coverage.json"),
+    JSON.stringify(preciseCoverage, null, 2),
+  );
+  await writeFile(
+    path.join(OUTPUT_DIR, "browser-metrics.json"),
+    JSON.stringify(browserMetrics, null, 2),
+  );
+  await writeFile(
     path.join(OUTPUT_DIR, "source-maps.json"),
     JSON.stringify(sourceMaps, null, 2),
   );
@@ -702,6 +900,16 @@ async function main() {
       jsonResponseShapes: network.filter(
         (entry) => entry.responseBody?.kind === "json",
       ).length,
+      eventStreams: network.filter(
+        (entry) => entry.responseBody?.kind === "event-stream",
+      ).length,
+      websocketConnections: websocketRecords.length,
+      websocketFrames: websocketRecords.reduce(
+        (sum, entry) => sum + entry.sentFrames + entry.receivedFrames,
+        0,
+      ),
+      scriptsObserved: scriptRecords.size,
+      scriptsWithCoverage: preciseCoverage.length,
       endpointCandidates: endpointCandidates.size,
       sourceMapCandidates: sourceMapCandidates.size,
       sourceMapsFetched: sourceMaps.length,
@@ -716,7 +924,8 @@ async function main() {
       requestHeadersExported: false,
       responseHeaders: "allowlisted metadata only; Set-Cookie excluded",
       requestBodies: "JSON structure and value types only; values omitted",
-      apiResponseBodies: "JSON structure only; values omitted; other bodies not collected",
+      apiResponseBodies: "JSON and streaming-event structure only; values omitted; other bodies not collected",
+      websocketFrames: "frame sizes and JSON shapes only; values omitted",
       conversationText: "not collected",
       browserStorage: "not read",
       rawHar: "not generated",
@@ -736,12 +945,15 @@ async function main() {
       "Network records contain URL paths, methods, statuses and payload shapes only.",
       "Static frontend assets and exposed source maps may be included.",
       "No cookies, authorization headers, raw request bodies, raw API response bodies,",
-      "browser storage, or conversation text were exported. JSON response shapes only.",
+      "browser storage values, or conversation text were exported. JSON/SSE/WebSocket shapes only.",
       "",
       "Files:",
       "- network.json: sanitized request/response metadata",
       "- payload-shapes.json: JSON request structure without values",
       "- response-shapes.json: JSON response structure without values",
+      "- websockets.json: WebSocket frame counts, sizes and JSON shapes",
+      "- script-coverage.json: executed script/function ranges and script hashes",
+      "- browser-metrics.json: Chromium performance metrics",
       "- endpoints.json: endpoint-like strings extracted from frontend code",
       "- assets.json: saved asset index and SHA-256 hashes",
       "- source-maps.json: source-map discovery results",
