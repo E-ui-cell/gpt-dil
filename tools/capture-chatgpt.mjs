@@ -770,7 +770,7 @@ async function runAnonymousProbe(page) {
     }
 
     result.assistantMessageCount = await page.locator(
-      '[data-message-role="assistant"], [data-testid*="conversation-turn"]',
+      '[data-message-role="assistant"], [data-message-author-role="assistant"]',
     ).count();
     result.completedMarkers = await page.locator(
       '[data-conversation-control="message-stream-complete"], [data-conversation-control="complete"]',
