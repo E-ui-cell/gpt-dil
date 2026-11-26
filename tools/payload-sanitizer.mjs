@@ -25,7 +25,9 @@ export function sanitizePayload(value, depth = 0) {
   if (value === null || typeof value === "boolean" || typeof value === "number") return value;
   if (typeof value === "string") return sanitizeText(value);
   if (Array.isArray(value)) {
-    return value.slice(0, 2000).map((item) => sanitizePayload(item, depth + 1));
+    const output = value.slice(0, 2000).map((item) => sanitizePayload(item, depth + 1));
+    if (value.length > 2000) output.push({ __truncatedItems: value.length - 2000 });
+    return output;
   }
   if (value && typeof value === "object") {
     const output = {};
