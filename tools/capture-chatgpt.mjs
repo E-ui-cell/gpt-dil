@@ -741,6 +741,7 @@ async function main() {
 
     pageState.url = sanitizeUrl(pageState.url);
     pageState.scripts = pageState.scripts.map(sanitizeUrl);
+    pageState.serviceWorkers = pageState.serviceWorkers.map(sanitizeUrl);
     pageState.resources = pageState.resources.map((resource) => ({
       ...resource,
       name: sanitizeUrl(resource.name),
@@ -754,8 +755,11 @@ async function main() {
           script.textContent = script.src ? "" : "[inline script omitted]";
         });
 
-        clone.querySelectorAll("input, textarea").forEach((field) => {
+        clone.querySelectorAll("input, textarea, select").forEach((field) => {
+          if ("value" in field) field.value = "";
           field.removeAttribute("value");
+          field.removeAttribute("checked");
+          field.removeAttribute("selected");
           field.textContent = "";
         });
 
