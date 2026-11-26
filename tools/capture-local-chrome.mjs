@@ -227,8 +227,26 @@ async function recordResponse(response) {
   const contentType = headers["content-type"] || "";
   record.responseContentType = contentType || null;
   record.responseHeaderNames = Object.keys(headers).sort();
-  for (const name of ["content-length", "cache-control", "content-encoding", "server"]) {
-    if (headers[name]) record[name.replace(/-/g, "_")] = headers[name];
+  record.responseHeaders = {};
+  for (const name of [
+    "content-length",
+    "cache-control",
+    "content-encoding",
+    "server",
+    "date",
+    "x-request-id",
+    "x-openai-request-id",
+    "cf-ray",
+    "retry-after",
+    "server-timing",
+    "x-ratelimit-limit-requests",
+    "x-ratelimit-remaining-requests",
+    "x-ratelimit-reset-requests",
+    "x-ratelimit-limit-tokens",
+    "x-ratelimit-remaining-tokens",
+    "x-ratelimit-reset-tokens",
+  ]) {
+    if (headers[name]) record.responseHeaders[name] = redactText(headers[name]);
   }
 
   if (!/(?:json|\+json|text\/event-stream|application\/x-ndjson|text\/plain|application\/xml)/i.test(contentType)) {
