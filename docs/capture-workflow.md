@@ -54,6 +54,8 @@ Local capture includes:
 
 Authorization/cookie header values, cookie values, common credential fields, and multipart upload contents are excluded. Main-page and accessible iframe DOM snapshots are saved with scripts and form values removed. Selected binary responses are saved locally. Conversation text is deliberately retained for protocol analysis. DIL bridge events are written to `dil-bridge.jsonl`; use `node tools/analyze-dil-bridge.mjs <capture-folder>/dil-bridge.jsonl` to summarize runner lifetimes, command IDs and long event gaps.
 
+Local body capture is capped at 32 MiB per body. DIL bridge logging is capped at 50,000 events/64 MiB, with a 256 KiB per-event limit. Shutdown waits up to 15 seconds for outstanding capture tasks and records a finalization timeout if some streams remain open; these limits are included in `capture.json`.
+
 **Local captures are private. They can contain your conversations. Never upload them to this public repository or its Releases.** Share only a copy you have inspected and redacted.
 
 ## LIMITS
