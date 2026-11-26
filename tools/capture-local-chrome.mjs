@@ -312,7 +312,7 @@ async function recordResponse(response) {
     record.responseBodyError = redactText(error?.message || error);
   }
 
-  if (/\\/conversation(?:\\/|$)/i.test(request.url())) {
+  if (/\/conversation(?:\/|$)/i.test(request.url())) {
     for (const page of pages) {
       if (!page.isClosed()) addPending(savePageSnapshot(page, "conversation-response"));
     }
