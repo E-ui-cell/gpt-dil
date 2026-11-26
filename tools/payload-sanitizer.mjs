@@ -2,12 +2,12 @@ const SECRET_KEY = /token|secret|password|passwd|authorization|cookie|csrf|xsrf|
 
 export function sanitizeText(value) {
   return String(value ?? "")
-    .replace(/Bearer\\s+[^\\s"'<>]+/gi, "Bearer [REDACTED]")
-    .replace(/\\bsk-[A-Za-z0-9_-]{10,}\\b/g, "[REDACTED]")
-    .replace(/\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{8,}\\b/g, "[JWT]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[EMAIL]")
-    .replace(/([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|signature|sig|session[_-]?proof|session[_-]?id|proof|auth)=)[^&#\\s]+/gi, "$1[REDACTED]")
-    .replace(/(["'](?:access[_-]?token|refresh[_-]?token|id[_-]?token|session[_-]?proof|session[_-]?id|api[_-]?key|client[_-]?secret|authorization|cookie|csrf|xsrf|sentinel|proof|signature|password|secret|token)["']\\s*:\\s*["'])[^"']*(["'])/gi, "$1[REDACTED]$2");
+    .replace(/Bearer\s+[^\s"'<>]+/gi, "Bearer [REDACTED]")
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]")
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g, "[JWT]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL]")
+    .replace(/([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|signature|sig|session[_-]?proof|session[_-]?id|proof|auth)=)[^&#\s]+/gi, "$1[REDACTED]")
+    .replace(/(["'](?:access[_-]?token|refresh[_-]?token|id[_-]?token|session[_-]?proof|session[_-]?id|api[_-]?key|client[_-]?secret|authorization|cookie|csrf|xsrf|sentinel|proof|signature|password|secret|token)["']\s*:\s*["'])[^"']*(["'])/gi, "$1[REDACTED]$2");
 }
 
 export function sanitizePayload(value, depth = 0) {
@@ -32,8 +32,8 @@ export function sanitizePayload(value, depth = 0) {
 export function sanitizeProtocolBody(raw, contentType = "") {
   const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw ?? "");
 
-  if (/multipart\\/form-data/i.test(contentType)) {
-    const fieldNames = [...new Set([...text.matchAll(/(?:^|[;\\s])name="([^"]+)"/g)].map((match) => match[1]))];
+  if (/multipart\/form-data/i.test(contentType)) {
+    const fieldNames = [...new Set([...text.matchAll(/(?:^|[;\s])name="([^"]+)"/g)].map((match) => match[1]))];
     return {
       kind: "multipart-metadata",
       bytes: Buffer.byteLength(text, "utf8"),
@@ -43,7 +43,7 @@ export function sanitizeProtocolBody(raw, contentType = "") {
     };
   }
 
-  if (/application\\/x-www-form-urlencoded/i.test(contentType)) {
+  if (/application\/x-www-form-urlencoded/i.test(contentType)) {
     const fields = {};
     for (const [key, value] of new URLSearchParams(text)) {
       fields[key] = SECRET_KEY.test(key) ? "[REDACTED]" : sanitizeText(value);
@@ -51,8 +51,8 @@ export function sanitizeProtocolBody(raw, contentType = "") {
     return { kind: "form-urlencoded", fields };
   }
 
-  if (/text\\/event-stream|application\\/x-ndjson|ndjson/i.test(contentType)) {
-    return text.split(/\\r?\\n/).map((line) => {
+  if (/text\/event-stream|application\/x-ndjson|ndjson/i.test(contentType)) {
+    return text.split(/\r?\n/).map((line) => {
       if (!line.startsWith("data:")) return sanitizeText(line);
       const data = line.slice(5).trim();
       if (data === "[DONE]") return "data: [DONE]";
@@ -61,10 +61,10 @@ export function sanitizeProtocolBody(raw, contentType = "") {
       } catch {
         return "data: " + sanitizeText(data);
       }
-    }).join("\\n");
+    }).join("\n");
   }
 
-  if (/json|\\+json/i.test(contentType)) {
+  if (/json|\+json/i.test(contentType)) {
     try {
       return sanitizePayload(JSON.parse(text));
     } catch {
