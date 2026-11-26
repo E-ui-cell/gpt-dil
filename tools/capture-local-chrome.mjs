@@ -231,7 +231,7 @@ async function recordResponse(response) {
     if (headers[name]) record[name.replace(/-/g, "_")] = headers[name];
   }
 
-  if (!/(?:json|\\+json|text\\/event-stream|application\\/x-ndjson|text\\/plain|application\\/xml)/i.test(contentType)) {
+  if (!/(?:json|\+json|text\/event-stream|application\/x-ndjson|text\/plain|application\/xml)/i.test(contentType)) {
     record.responseBody = { skipped: "non-text-response", contentType };
     return;
   }
