@@ -6,12 +6,17 @@ Small browser tools for ChatGPT.
 
 - uBlock Origin filters
 - Tampermonkey userscripts
+  - [Plain-text custom payload hook](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js)
 - Automated protocol capture
 - Windows installer
 
 # INSTALL
 
 irm https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/Install.ps1 | iex
+
+# CUSTOM PAYLOAD
+
+Install the [Tampermonkey script](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js). Edit the `CUSTOM_PAYLOAD_TEXT` block near the top to change the text appended to the latest user message.
 
 # CAPTURE
 
