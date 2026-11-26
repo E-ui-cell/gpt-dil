@@ -185,14 +185,14 @@ jobs:
             "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "windows": $([ -d release-input/windows ] && echo true || echo false),
             "linux": $([ -d release-input/linux ] && echo true || echo false),
-            "scope": "unauthenticated public frontend; payload schemas only"
+            "scope": "unauthenticated public frontend; payload schemas only; fixed anonymous probe"
           }
           EOF
           TAG="capture-${{ github.run_id }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/* --clobber
           else
-            gh release create "$TAG" release-assets/* --title "ChatGPT capture #${{ github.run_number }}" --notes "Automated Windows/Linux public-frontend capture. No account login, cookies, authorization headers, raw conversation bodies, or private user data are collected."
+            gh release create "$TAG" release-assets/* --title "ChatGPT capture #${{ github.run_number }}" --notes "Automated Windows/Linux public-frontend capture. Linux Firefox sends one fixed anonymous test prompt to exercise conversation streaming. No account login, cookies, authorization headers, raw conversation bodies, or private user data are published."
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
