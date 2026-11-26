@@ -15,3 +15,10 @@ build/
 *.tmp
 *.bak
 *.log
+
+# Runtime dependencies and private captures
+node_modules/
+capture-output/
+captures/
+GPT-DIL-Captures/
+*.tar.gz
