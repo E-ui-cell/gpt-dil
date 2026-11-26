@@ -40,6 +40,7 @@ const network = [];
 const consoleEvents = [];
 const websocketRecords = [];
 const frameInventory = [];
+const frameLifecycle = [];
 let workerInventory = [];
 const scriptRecords = new Map();
 const endpointCandidates = new Set();
@@ -804,6 +805,18 @@ async function main() {
 
   const page = await context.newPage();
   page.setDefaultNavigationTimeout(60000);
+  const recordFrameLifecycle = (type, frame) => {
+    frameLifecycle.push({
+      type,
+      atMs: Date.now() - startedAt.getTime(),
+      name: frame.name(),
+      url: sanitizeUrl(frame.url()),
+      parentUrl: frame.parentFrame() ? sanitizeUrl(frame.parentFrame().url()) : null,
+    });
+  };
+  page.on("frameattached", (frame) => recordFrameLifecycle("attached", frame));
+  page.on("framenavigated", (frame) => recordFrameLifecycle("navigated", frame));
+  page.on("framedetached", (frame) => recordFrameLifecycle("detached", frame));
 
   let cdpSession;
   let preciseCoverage = [];
@@ -1330,6 +1343,10 @@ async function main() {
     JSON.stringify(frameInventory, null, 2),
   );
   await writeFile(
+    path.join(OUTPUT_DIR, "frame-lifecycle.json"),
+    JSON.stringify(frameLifecycle, null, 2),
+  );
+  await writeFile(
     path.join(OUTPUT_DIR, "workers.json"),
     JSON.stringify(workerInventory, null, 2),
   );
@@ -1385,6 +1402,7 @@ async function main() {
       endpointCandidates: endpointCandidates.size,
       endpointGroups: summarizeEndpoints(network).length,
       framesObserved: frameInventory.length,
+      frameLifecycleEvents: frameLifecycle.length,
       workersObserved: workerInventory.length,
       bundleFilesScanned: bundleFindings.filesScanned,
       bundleSymbolMatches: bundleFindings.totalSymbolMatches,
@@ -1443,7 +1461,8 @@ async function main() {
       "- assets.json: saved asset index and SHA-256 hashes",
       "- source-maps.json: source-map discovery results",
       "- page-state.json: browser and resource timing metadata",
-      "- frames.json and frames/: frame tree, scripts, resource timings and sanitized DOM snapshots",
+      "- frames.json and frames/: frame tree, scripts, storage metadata, resource timings and sanitized DOM snapshots",
+      "- frame-lifecycle.json: iframe attach/navigation/detach timeline",
       "- workers.json: dedicated and service worker script URLs",
       "- bundle-findings.json: DIL runtime symbols, endpoint references and source-map source names",
       "- console.json: sanitized browser warnings and errors",
