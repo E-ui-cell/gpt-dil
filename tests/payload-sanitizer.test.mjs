@@ -92,3 +92,14 @@ test("sanitizes NDJSON records that do not use SSE data prefixes", () => {
   assert.match(output, /"value":"visible"/);
   assert.doesNotMatch(output, /private/);
 });
+
+test("redacts token-suffixed fields embedded in plain text", () => {
+  const output = sanitizeProtocolBody(
+    'bootstrap {"prepare_token":"private","conduit_token":"private-too","mode":"anon"}',
+    "text/plain",
+  );
+
+  assert.doesNotMatch(output, /private/);
+  assert.match(output, /prepare_token/);
+  assert.match(output, /conduit_token/);
+});
