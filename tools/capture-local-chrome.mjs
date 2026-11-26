@@ -23,6 +23,8 @@ const pages = new Set();
 
 let browser;
 let context;
+let browserVersion = "unknown";
+let requestStop;
 let sequence = 0;
 let stopping = false;
 let stopReason = "running";
@@ -454,7 +456,7 @@ async function writeReport() {
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     stopReason,
-    browserVersion: browser.version(),
+    browserVersion,
     requests: network.length,
     responses: network.filter((item) => item.status !== undefined).length,
     requestBodies: network.filter((item) => item.requestBody && typeof item.requestBody === "string").length,
@@ -503,6 +505,7 @@ async function writeReport() {
 async function main() {
   await mkdir(OUTPUT_DIR, { recursive: true });
   browser = await chromium.connectOverCDP(CDP_URL);
+  browserVersion = browser.version();
   context = browser.contexts()[0];
   if (!context) throw new Error("No Chrome browser context was found on the debugging port.");
 
@@ -534,7 +537,7 @@ async function main() {
   console.log("Output: " + OUTPUT_DIR);
 
   await new Promise((resolve) => {
-    const stop = async (signal) => {
+    const stop = (signal) => {
       if (stopping) return;
       stopping = true;
       stopReason = signal;
@@ -542,10 +545,12 @@ async function main() {
       process.off("SIGTERM", onSigterm);
       resolve();
     };
+    requestStop = stop;
     const onSigint = () => stop("SIGINT");
     const onSigterm = () => stop("SIGTERM");
     process.on("SIGINT", onSigint);
     process.on("SIGTERM", onSigterm);
+    browser.on("disconnected", () => stop("browser-disconnected"));
   });
 
   for (const pageItem of pages) {
@@ -553,7 +558,8 @@ async function main() {
   }
   await writeReport();
   console.log("Capture saved: " + OUTPUT_DIR);
-  await browser.close();
+  requestStop = null;
+  await browser.close().catch(() => {});
 }
 
 main().catch(async (error) => {
@@ -561,5 +567,8 @@ main().catch(async (error) => {
   process.exitCode = 1;
   if (context) {
     try { await writeReport(); } catch {}
+  }
+  if (browser) {
+    try { await browser.close(); } catch {}
   }
 });
