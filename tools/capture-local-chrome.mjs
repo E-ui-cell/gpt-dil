@@ -345,7 +345,7 @@ async function savePageSnapshot(page, reason) {
     for (const [index, frame] of page.frames().entries()) {
       if (index === 0) continue;
       try {
-        const frameState = await frame.evaluate(() => {
+        const frameState = await frame.evaluate(async () => {
           const clone = document.documentElement.cloneNode(true);
           clone.querySelectorAll("script").forEach((script) => script.remove());
           clone.querySelectorAll("input, textarea, select").forEach((field) => {
@@ -373,11 +373,23 @@ async function savePageSnapshot(page, reason) {
               } catch {}
             }
           });
+          let databases = [];
+          try {
+            databases = (await indexedDB.databases()).map((db) => ({ name: db.name, version: db.version }));
+          } catch {}
+          let serviceWorkers = [];
+          try {
+            serviceWorkers = (await navigator.serviceWorker.getRegistrations()).map((registration) => registration.scope);
+          } catch {}
           return {
             title: document.title,
             url: location.origin + location.pathname,
             readyState: document.readyState,
             scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
+            localStorageKeys: (() => { try { return Object.keys(localStorage).sort(); } catch { return []; } })(),
+            sessionStorageKeys: (() => { try { return Object.keys(sessionStorage).sort(); } catch { return []; } })(),
+            indexedDB: databases,
+            serviceWorkers,
             html: "<!doctype html>" + clone.outerHTML,
           };
         });
@@ -391,6 +403,10 @@ async function savePageSnapshot(page, reason) {
           title: frameState.title,
           readyState: frameState.readyState,
           scripts: frameState.scripts.map(safeUrl),
+          localStorageKeys: frameState.localStorageKeys,
+          sessionStorageKeys: frameState.sessionStorageKeys,
+          indexedDB: frameState.indexedDB,
+          serviceWorkers: frameState.serviceWorkers.map(safeUrl),
           html: path.posix.join("snapshots", filename),
         });
       } catch (error) {
