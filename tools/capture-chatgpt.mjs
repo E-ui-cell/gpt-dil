@@ -565,7 +565,7 @@ async function processStaticResponse(response, record) {
     return;
   }
 
-  if (!isStatic && /text\/(?:plain|xml)|application\/xml/i.test(contentType)) {
+  if (!isStatic && /text\/(?:plain|xml)|application\/(?:xml|graphql)/i.test(contentType)) {
     const declaredLength = Number(headers["content-length"] || 0);
     if (declaredLength > MAX_JSON_RESPONSE_BYTES) {
       record.responseBody = { kind: "text", skipped: "over-size-limit", bytes: declaredLength };
