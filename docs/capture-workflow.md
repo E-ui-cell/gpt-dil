@@ -22,6 +22,7 @@ Actions artifacts are retained for 14 days. Release assets remain until deleted.
 - Bundle analysis of DIL symbols, endpoint references and source-map source names
 - Chromium performance metrics, script coverage, resource timing and browser errors
 - DOM snapshots for the main page and every accessible iframe, including the DIL frame
+- Frame attach/navigation/detach timelines and per-frame storage-key/database metadata
 - Dedicated/service worker URLs, local/session storage key names, IndexedDB names and service-worker scopes
 
 The cloud browser is fresh and unauthenticated. Each browser engine sends one fixed, harmless anonymous test prompt per run to exercise the conversation request and response stream; no account is used and no user-provided text is sent. Credential-like fields, cookies, authorization values, email addresses and account/device identifiers are redacted before publishing. Multipart values, file contents and binary WebSocket payloads are not exported. It cannot see your ChatGPT account traffic.
@@ -51,6 +52,7 @@ Local capture includes:
 - DIL frame, MessagePort, Worker, SharedWorker, ServiceWorker and BroadcastChannel messages in both directions, with sensitive fields redacted
 - Request/response status, headers names, content types and timings
 - Sanitized DOM snapshots for the main page and accessible iframes, resource lists and browser diagnostics
+- Per-frame storage metadata and iframe attach/navigation/detach timeline
 - Cookie names/attributes, storage key names and IndexedDB database names
 
 Authorization/cookie header values, cookie values, common credential fields, and multipart upload contents are excluded. Main-page and accessible iframe DOM snapshots are saved with scripts and form values removed. Selected binary responses are saved locally. Conversation text is deliberately retained for protocol analysis. DIL bridge events are written to `dil-bridge.jsonl`; use `node tools/analyze-dil-bridge.mjs <capture-folder>/dil-bridge.jsonl` to summarize runner lifetimes, command IDs and long event gaps.
