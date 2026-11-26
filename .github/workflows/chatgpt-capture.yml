@@ -6,6 +6,7 @@ on:
     paths:
       - "tools/**"
       - "tests/**"
+      - "userscripts/**"
       - "docs/**"
       - "Capture-Local.ps1"
       - ".github/workflows/chatgpt-capture.yml"
@@ -53,6 +54,7 @@ jobs:
           node --check tools/analyze-dil-bridge.mjs
           node --check tools/analyze-bundles.mjs
           node --check tools/dil-bridge-hook.js
+          node --check userscripts/plain-text-payload.user.js
           node --test
 
       - name: Check PowerShell launcher syntax
@@ -109,6 +111,7 @@ jobs:
           node --check tools/analyze-dil-bridge.mjs
           node --check tools/analyze-bundles.mjs
           node --check tools/dil-bridge-hook.js
+          node --check userscripts/plain-text-payload.user.js
           node --test
 
       - name: Install Playwright
