@@ -52,15 +52,23 @@ export function sanitizeProtocolBody(raw, contentType = "") {
   }
 
   if (/text\/event-stream|application\/x-ndjson|ndjson/i.test(contentType)) {
+    const isNdjson = /ndjson/i.test(contentType);
     return text.split(/\r?\n/).map((line) => {
-      if (!line.startsWith("data:")) return sanitizeText(line);
-      const data = line.slice(5).trim();
-      if (data === "[DONE]") return "data: [DONE]";
-      try {
-        return "data: " + JSON.stringify(sanitizePayload(JSON.parse(data)));
-      } catch {
-        return "data: " + sanitizeText(data);
+      if (line.startsWith("data:")) {
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return "data: [DONE]";
+        try {
+          return "data: " + JSON.stringify(sanitizePayload(JSON.parse(data)));
+        } catch {
+          return "data: " + sanitizeText(data);
+        }
       }
+      if (isNdjson && line.trim()) {
+        try {
+          return JSON.stringify(sanitizePayload(JSON.parse(line)));
+        } catch {}
+      }
+      return sanitizeText(line);
     }).join("\n");
   }
 
