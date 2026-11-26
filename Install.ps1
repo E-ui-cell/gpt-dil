@@ -12,17 +12,11 @@ $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('GPT-DIL-' + [guid]::NewGuid()
 $sourceRoot = $PSScriptRoot
 $downloadSource = [string]::IsNullOrWhiteSpace($sourceRoot)
 
-if (-not $downloadSource -and (Test-Path -LiteralPath $sourceRoot)) {
+if (-not $downloadSource -and (Test-Path -LiteralPath $InstallPath)) {
     try {
-        $sourceFullPath = [IO.Path]::GetFullPath($sourceRoot).TrimEnd(
-            [IO.Path]::DirectorySeparatorChar,
-            [IO.Path]::AltDirectorySeparatorChar
-        )
-        $installFullPath = [IO.Path]::GetFullPath($InstallPath).TrimEnd(
-            [IO.Path]::DirectorySeparatorChar,
-            [IO.Path]::AltDirectorySeparatorChar
-        )
-        if ($sourceFullPath -ieq $installFullPath) {
+        $sourcePath = (Resolve-Path -LiteralPath $sourceRoot).Path
+        $destinationPath = (Resolve-Path -LiteralPath $InstallPath).Path
+        if ($sourcePath -ieq $destinationPath) {
             $downloadSource = $true
         }
     }
@@ -30,10 +24,18 @@ if (-not $downloadSource -and (Test-Path -LiteralPath $sourceRoot)) {
     }
 }
 
-try {
-    if ($downloadSource -or
-        -not (Test-Path -LiteralPath (Join-Path $sourceRoot 'README.md'))) {
+if (-not $downloadSource) {
+    $sourceLooksLikeRepo =
+        (Test-Path -LiteralPath (Join-Path $sourceRoot 'README.md')) -and
+        (Test-Path -LiteralPath (Join-Path $sourceRoot 'filters\ublock\telemetry.txt'))
 
+    if (-not $sourceLooksLikeRepo) {
+        $downloadSource = $true
+    }
+}
+
+try {
+    if ($downloadSource) {
         New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
         try {
@@ -50,7 +52,8 @@ try {
         $sourceRoot = Join-Path $tempRoot 'gpt-dil-main'
     }
 
-    if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'README.md'))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'README.md')) -or
+        -not (Test-Path -LiteralPath (Join-Path $sourceRoot 'filters\ublock\telemetry.txt'))) {
         throw 'The GPT-DIL source archive is incomplete.'
     }
 
@@ -63,9 +66,11 @@ try {
         New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
     }
 
-    Get-ChildItem -LiteralPath $sourceRoot -Force | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force
-    }
+    Get-ChildItem -LiteralPath $sourceRoot -Force |
+        Where-Object { $_.Name -ne '.git' } |
+        ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force
+        }
 
     Write-Host ''
     Write-Host "GPT-DIL installed to: $InstallPath" -ForegroundColor Green
