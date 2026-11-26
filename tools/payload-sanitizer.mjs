@@ -1,4 +1,4 @@
-const SECRET_KEY = /token|secret|password|passwd|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|api.?key|email|username|sentinel|session|auth|bearer|jwt|phone|device.?id/i;
+const SECRET_KEY = /token|secret|password|passwd|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|api.?key|email|username|sentinel|session|auth|bearer|jwt|phone|device.?id|user.?id|account.?id|ip.?address/i;
 
 export function sanitizeText(value) {
   return String(value ?? "")
@@ -51,14 +51,6 @@ export function sanitizeProtocolBody(raw, contentType = "") {
     return { kind: "form-urlencoded", fields };
   }
 
-  if (/json|\\+json/i.test(contentType)) {
-    try {
-      return sanitizePayload(JSON.parse(text));
-    } catch {
-      return sanitizeText(text);
-    }
-  }
-
   if (/text\\/event-stream|application\\/x-ndjson|ndjson/i.test(contentType)) {
     return text.split(/\\r?\\n/).map((line) => {
       if (!line.startsWith("data:")) return sanitizeText(line);
@@ -72,9 +64,10 @@ export function sanitizeProtocolBody(raw, contentType = "") {
     }).join("\\n");
   }
 
-  return sanitizeText(text);
-}
-
-export function isSensitivePayloadKey(key) {
-  return SECRET_KEY.test(String(key));
-}
+  if (/json|\\+json/i.test(contentType)) {
+    try {
+      return sanitizePayload(JSON.parse(text));
+    } catch {
+      return sanitizeText(text);
+    }
+  }
