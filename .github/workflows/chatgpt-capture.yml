@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check collector syntax
+      - name: Check syntax and run tests
         run: |
           node --check tools/capture-chatgpt.mjs
           node --check tools/capture-local-chrome.mjs
@@ -100,9 +100,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check collector syntax and run tests
+      - name: Check syntax and run tests
         run: |
           node --check tools/capture-chatgpt.mjs
+          node --check tools/capture-local-chrome.mjs
           node --check tools/payload-sanitizer.mjs
           node --check tools/analyze-dil-bridge.mjs
           node --check tools/dil-bridge-hook.js
