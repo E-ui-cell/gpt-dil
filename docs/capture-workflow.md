@@ -26,11 +26,11 @@ The Windows and Linux jobs use fresh, unauthenticated Chromium sessions. Selecti
 - Login cookies or browser profiles
 - Authorization or request headers
 - Raw request bodies or conversation text
-- Dynamic API response bodies
+- Raw dynamic API response bodies and values (JSON response shapes only)
 - Local storage or session storage
 - HAR files
 
-This is intentional. HAR files and full browser traces can contain credentials, cookies, and private message content. Request payloads are reduced to schema shape before they are written to the artifact.
+This is intentional. HAR files and full browser traces can contain credentials, cookies, and private message content. Request and JSON response payloads are reduced to schema shapes before they are written to the artifact.
 
 ## ARTIFACTS
 
