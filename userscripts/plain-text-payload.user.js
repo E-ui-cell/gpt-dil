@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GPT-DIL - Plain Text Payload
 // @namespace    https://github.com/E-ui-cell/gpt-dil
-// @version      0.1.0
+// @version      0.2.0
 // @description  Adds an editable custom text payload to outgoing ChatGPT user messages.
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
