@@ -91,7 +91,7 @@ function sanitizeUrl(rawUrl) {
 }
 
 function isTextProtocolContentType(contentType) {
-  return /json|\+json|x-www-form-urlencoded|multipart\/form-data|text\/|application\/xml/i.test(contentType);
+  return /json|\+json|x-www-form-urlencoded|multipart\/form-data|text\/|application\/(?:xml|graphql)/i.test(contentType);
 }
 
 function resolveSanitizedUrl(reference, baseUrl) {
