@@ -21,7 +21,9 @@ Daily Windows + Linux captures are published in [Releases](https://github.com/E-
 
 Run `.\Capture-Local.ps1` in PowerShell.
 
-This opens a separate Chrome profile for authenticated traffic capture. Sign in there and use ChatGPT. Captures stay on your PC.
+This opens a separate Chrome profile for authenticated traffic capture, including DIL frame and MessagePort traffic. Sign in there and use ChatGPT. Captures stay on your PC.
+
+Analyze DIL runner lifetimes and command traffic with `node tools/analyze-dil-bridge.mjs <path-to-dil-bridge.jsonl>`.
 
 # UPDATE
 

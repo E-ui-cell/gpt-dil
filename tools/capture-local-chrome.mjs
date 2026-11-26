@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { mkdir, writeFile, appendFile } from "node:fs/promises";
+import { mkdir, writeFile, appendFile, readFile } from "node:fs/promises";
 
 const CDP_URL = process.env.GPT_DIL_CDP_URL || "http://127.0.0.1:9222";
 const BASE_DIR = path.resolve(
@@ -11,6 +11,9 @@ const BASE_DIR = path.resolve(
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, "-");
 const OUTPUT_DIR = path.join(BASE_DIR, "capture-" + RUN_ID);
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
+const MAX_DIL_BRIDGE_EVENTS = 50000;
+const MAX_DIL_BRIDGE_LOG_BYTES = 64 * 1024 * 1024;
+const MAX_DIL_BRIDGE_EVENT_BYTES = 256 * 1024;
 const ALLOWED_HOSTS = ["chatgpt.com", "openai.com", "oaiusercontent.com", "oaistatic.com"];
 
 const startedAt = new Date();
@@ -20,6 +23,10 @@ const consoleEvents = [];
 const pending = new Set();
 const requestRecords = new WeakMap();
 const pages = new Set();
+const dilBridgeLogLines = [];
+let dilBridgeLogBytes = 0;
+let dilBridgeDroppedEvents = 0;
+let dilBridgeHookSource = "";
 
 let browser;
 let context;
@@ -59,10 +66,11 @@ function redactText(value) {
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
     .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "[SECRET]")
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g, "[JWT]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL]")
     .replace(/([?&](?:token|access_token|refresh_token|api_key|key|signature|sig)=)[^&\s]+/gi, "$1[REDACTED]");
 }
 
-const SECRET_KEY = /(?:token|secret|password|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|(?:api|client)[_-]?key|email|username|sentinel)$/i;
+const SECRET_KEY = /token|secret|password|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|api.?key|email|username|sentinel|session|auth|bearer|jwt|phone/i;
 
 function redactObject(value, depth = 0) {
   if (depth > 30) return "[DEPTH-LIMIT]";
@@ -408,9 +416,21 @@ async function savePageSnapshot(page, reason) {
   }
 }
 
+async function installBridgeFrame(frame) {
+  if (!dilBridgeHookSource) return;
+  try { await frame.evaluate(dilBridgeHookSource); } catch {}
+}
+
+async function installBridgeHook(page) {
+  if (page.isClosed()) return;
+  await Promise.all(page.frames().map((frame) => installBridgeFrame(frame)));
+}
+
 function attachPage(page) {
   if (pages.has(page)) return;
   pages.add(page);
+  addPending(installBridgeHook(page));
+  page.on("frameattached", (frame) => addPending(installBridgeFrame(frame)));
 
   page.on("websocket", (socket) => {
     const entry = {
@@ -476,6 +496,7 @@ function attachPage(page) {
   });
 
   page.on("framenavigated", (frame) => {
+    addPending(installBridgeFrame(frame));
     if (frame === page.mainFrame()) addPending(savePageSnapshot(page, "navigation"));
   });
 }
@@ -501,6 +522,11 @@ async function writeReport() {
   await writeFile(path.join(OUTPUT_DIR, "websockets.json"), JSON.stringify(websocketRecords, null, 2));
   await writeFile(path.join(OUTPUT_DIR, "console.json"), JSON.stringify(consoleEvents, null, 2));
   await writeFile(path.join(OUTPUT_DIR, "cookies-metadata.json"), JSON.stringify(cookies, null, 2));
+  await writeFile(
+    path.join(OUTPUT_DIR, "dil-bridge.jsonl"),
+    dilBridgeLogLines.length ? dilBridgeLogLines.join("\n") + "\n" : "",
+    "utf8",
+  );
 
   const report = {
     captureType: "local-authenticated-browser",
@@ -515,6 +541,9 @@ async function writeReport() {
     binaryResponseBodies: network.filter((item) => item.responseBody?.binary).length,
     websocketConnections: websocketRecords.length,
     websocketFrames: websocketRecords.reduce((sum, item) => sum + item.sentFrames + item.receivedFrames, 0),
+    dilBridgeMessages: dilBridgeLogLines.length,
+    dilBridgeDroppedMessages: dilBridgeDroppedEvents,
+    dilBridgeLogBytes: dilBridgeLogBytes,
     pagesObserved: pages.size,
     privacy: {
       outputIsLocalOnly: true,
@@ -523,6 +552,7 @@ async function writeReport() {
       localAndSessionStorageValues: "never recorded; key names only",
       indexedDBValues: "never recorded; database names and versions only",
       requestAndResponseBodies: "captured with credential-like JSON fields redacted",
+      dilBridgePayloads: "Window, MessagePort, Worker, SharedWorker and BroadcastChannel messages captured in both directions with sensitive fields redacted",
       conversationContent: "included; this folder is private and must not be uploaded publicly",
       multipartValuesAndFileContents: "not recorded",
     },
@@ -541,6 +571,7 @@ async function writeReport() {
       "responses/: JSON, text, streaming and selected binary response bodies",
       "Multipart upload file contents and other binary request bodies are not recorded.",
       "websockets/: sent and received WebSocket frames",
+      "dil-bridge.jsonl: DIL frame/worker/MessagePort messages in both directions; sensitive fields redacted",
       "snapshots/: sanitized DOM snapshots and browser/storage metadata",
       "network.json: request/response index and timing",
       "websockets.json: WebSocket connection summary",
@@ -561,6 +592,37 @@ async function main() {
   browserVersion = browser.version();
   context = browser.contexts()[0];
   if (!context) throw new Error("No Chrome browser context was found on the debugging port.");
+
+  dilBridgeHookSource = await readFile(new URL("./dil-bridge-hook.js", import.meta.url), "utf8");
+  await context.exposeBinding("__gptDilBridgeEvent", ({ frame, page }, event) => {
+    if (stopping || !event || typeof event !== "object") return;
+    if (dilBridgeLogLines.length >= MAX_DIL_BRIDGE_EVENTS) {
+      dilBridgeDroppedEvents++;
+      return;
+    }
+    try {
+      const safeEvent = redactObject(event);
+      safeEvent.captureElapsedMs = Date.now() - startedAt.getTime();
+      safeEvent.observedAt = new Date().toISOString();
+      safeEvent.pageUrl = page ? safeUrl(page.url()) : null;
+      safeEvent.frameUrl = frame ? safeUrl(frame.url()) : null;
+      const line = JSON.stringify(safeEvent);
+      const bytes = Buffer.byteLength(line, "utf8") + 1;
+      if (bytes > MAX_DIL_BRIDGE_EVENT_BYTES || dilBridgeLogBytes + bytes > MAX_DIL_BRIDGE_LOG_BYTES) {
+        dilBridgeDroppedEvents++;
+        return;
+      }
+      dilBridgeLogLines.push(line);
+      dilBridgeLogBytes += bytes;
+    } catch (error) {
+      consoleEvents.push({
+        type: "dil-bridge-capture-error",
+        message: redactText(error?.message || error),
+        at: new Date().toISOString(),
+      });
+    }
+  });
+  await context.addInitScript({ content: dilBridgeHookSource });
 
   context.on("page", attachPage);
   context.on("request", (request) => addPending(recordRequest(request)));
@@ -586,6 +648,7 @@ async function main() {
 
   await savePageSnapshot(page, "capture-start");
   console.log("GPT-DIL local capture is running.");
+  console.log("DIL frame/MessagePort/Worker messages are captured in both directions with sensitive fields redacted.");
   console.log("Use ChatGPT normally in the dedicated Chrome window. Press Ctrl+C here to stop.");
   console.log("Output: " + OUTPUT_DIR);
 

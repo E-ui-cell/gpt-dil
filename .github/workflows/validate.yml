@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "tools/**"
+      - "tests/**"
       - "Capture-Local.ps1"
       - ".github/workflows/**"
   pull_request:
     paths:
       - "tools/**"
+      - "tests/**"
       - "Capture-Local.ps1"
       - ".github/workflows/**"
 
@@ -33,6 +35,14 @@ jobs:
         run: |
           node --check tools/capture-chatgpt.mjs
           node --check tools/capture-local-chrome.mjs
+          node --check tools/dil-bridge-hook.js
+          node --check tools/analyze-dil-bridge.mjs
+          $testFiles = Get-ChildItem -Path tests -Filter "*.test.mjs" -File
+          if (-not $testFiles) { throw "No tests found" }
+          foreach ($testFile in $testFiles) {
+            node --test $testFile.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Check PowerShell syntax
         shell: pwsh
