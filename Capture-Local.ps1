@@ -12,6 +12,10 @@ $Npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 if (-not $Node -or -not $Npm) {
     throw "Node.js 22 or newer is required. Install Node.js, then run this script again."
 }
+$NodeVersionText = (& $Node.Source --version) -replace "^v", ""
+if ([version]$NodeVersionText -lt [version]"22.0") {
+    throw "Node.js 22 or newer is required. Current version: $NodeVersionText"
+}
 
 $ChromeCandidates = @(
     (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
@@ -45,7 +49,7 @@ Write-Host ""
 $Arguments = @(
     "--remote-debugging-port=$Port",
     "--remote-allow-origins=*",
-    "--user-data-dir=$Profile",
+    "--user-data-dir=`"$Profile`"",
     "--no-first-run",
     "--no-default-browser-check",
     "about:blank"
