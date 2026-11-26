@@ -4,7 +4,10 @@ on:
   push:
     branches: [main]
     paths:
-      - "tools/capture-chatgpt.mjs"
+      - "tools/**"
+      - "tests/**"
+      - "docs/**"
+      - "Capture-Local.ps1"
       - ".github/workflows/chatgpt-capture.yml"
   schedule:
     - cron: '17 3 * * *'
@@ -46,6 +49,10 @@ jobs:
         run: |
           node --check tools/capture-chatgpt.mjs
           node --check tools/capture-local-chrome.mjs
+          node --check tools/payload-sanitizer.mjs
+          node --check tools/analyze-dil-bridge.mjs
+          node --check tools/dil-bridge-hook.js
+          node --test
 
       - name: Check PowerShell launcher syntax
         shell: pwsh
@@ -67,6 +74,7 @@ jobs:
           GPT_DIL_OUTPUT_DIR: capture-output/chromium
           GPT_DIL_INCLUDE_ASSETS: "true"
           GPT_DIL_INCLUDE_SOURCE_MAPS: "true"
+          GPT_DIL_RUN_ANONYMOUS_PROBE: "true"
         run: node tools/capture-chatgpt.mjs
 
       - name: Upload Windows capture
@@ -92,8 +100,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check collector syntax
-        run: node --check tools/capture-chatgpt.mjs
+      - name: Check collector syntax and run tests
+        run: |
+          node --check tools/capture-chatgpt.mjs
+          node --check tools/payload-sanitizer.mjs
+          node --check tools/analyze-dil-bridge.mjs
+          node --check tools/dil-bridge-hook.js
+          node --test
 
       - name: Install Playwright
         run: npm install --no-save --no-audit --no-fund playwright
@@ -113,18 +126,14 @@ jobs:
             echo "Capturing with $engine"
             export GPT_DIL_BROWSER="$engine"
             export GPT_DIL_OUTPUT_DIR="capture-output/$engine"
-            if [ "$engine" = "firefox" ]; then
-              export GPT_DIL_RUN_ANONYMOUS_PROBE=true
-            else
-              export GPT_DIL_RUN_ANONYMOUS_PROBE=false
-            fi
+            export GPT_DIL_RUN_ANONYMOUS_PROBE=true
             if node tools/capture-chatgpt.mjs; then
               successes=$((successes + 1))
             else
               echo "$engine capture failed; continuing with remaining engines."
             fi
           done
-          printf "Successful browser engines: %s/3\\n" "$successes" > capture-output/browser-matrix.txt
+          printf "Successful browser engines: %s/3\n" "$successes" > capture-output/browser-matrix.txt
           if [ "$successes" -eq 0 ]; then exit 1; fi
 
       - name: Upload Linux capture
@@ -185,14 +194,14 @@ jobs:
             "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "windows": $([ -d release-input/windows ] && echo true || echo false),
             "linux": $([ -d release-input/linux ] && echo true || echo false),
-            "scope": "unauthenticated public frontend; payload schemas only; fixed anonymous probe"
+            "scope": "unauthenticated public frontend; sanitized protocol payload values; fixed anonymous probe"
           }
           EOF
           TAG="capture-${{ github.run_id }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/* --clobber
           else
-            gh release create "$TAG" release-assets/* --title "ChatGPT capture #${{ github.run_number }}" --notes "Automated Windows/Linux public-frontend capture. Linux Firefox sends one fixed anonymous test prompt to exercise conversation streaming. No account login, cookies, authorization headers, raw conversation bodies, or private user data are published."
+            gh release create "$TAG" release-assets/* --title "ChatGPT capture #${{ github.run_number }}" --notes "Automated Windows/Linux public-frontend capture. Each browser engine sends one fixed anonymous test prompt to exercise conversation streaming. Protocol request/response and WebSocket text payloads are credential-redacted; multipart values, file contents, cookies, authorization headers and authenticated user data are not published."
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
