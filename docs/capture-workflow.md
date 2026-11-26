@@ -47,10 +47,10 @@ Local capture includes:
 - Sent and received WebSocket text frames
 - DIL frame, MessagePort, Worker, SharedWorker and BroadcastChannel messages in both directions, with sensitive fields redacted
 - Request/response status, headers names, content types and timings
-- Sanitized DOM snapshots, resource lists and browser diagnostics
+- Sanitized DOM snapshots for the main page and accessible iframes, resource lists and browser diagnostics
 - Cookie names/attributes, storage key names and IndexedDB database names
 
-Authorization/cookie header values, cookie values, common credential fields, and multipart upload contents are excluded. Selected binary responses are saved locally. Conversation text is deliberately retained for protocol analysis. DIL bridge events are written to `dil-bridge.jsonl`; use `node tools/analyze-dil-bridge.mjs <capture-folder>/dil-bridge.jsonl` to summarize runner lifetimes, command IDs and long event gaps.
+Authorization/cookie header values, cookie values, common credential fields, and multipart upload contents are excluded. Main-page and accessible iframe DOM snapshots are saved with scripts and form values removed. Selected binary responses are saved locally. Conversation text is deliberately retained for protocol analysis. DIL bridge events are written to `dil-bridge.jsonl`; use `node tools/analyze-dil-bridge.mjs <capture-folder>/dil-bridge.jsonl` to summarize runner lifetimes, command IDs and long event gaps.
 
 **Local captures are private. They can contain your conversations. Never upload them to this public repository or its Releases.** Share only a copy you have inspected and redacted.
 
