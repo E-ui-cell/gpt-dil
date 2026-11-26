@@ -97,9 +97,15 @@ try {
 
     $env:GPT_DIL_CDP_URL = "http://127.0.0.1:$Port"
     $env:GPT_DIL_LOCAL_OUTPUT_DIR = $Output
-    & $Node.Source (Join-Path $RepoRoot "tools\capture-local-chrome.mjs")
-    if ($LASTEXITCODE -ne 0) {
-        throw "Local capture exited with an error."
+
+    $NodeLog = Join-Path $DataRoot "capture-node.log"
+    Remove-Item -LiteralPath $NodeLog -Force -ErrorAction SilentlyContinue
+    Write-Host "Node diagnostics: $NodeLog"
+    & $Node.Source (Join-Path $RepoRoot "tools\capture-local-chrome.mjs") 2>&1 |
+        Tee-Object -FilePath $NodeLog
+    $CaptureExitCode = $LASTEXITCODE
+    if ($CaptureExitCode -ne 0) {
+        throw "Node capture failed with exit code $CaptureExitCode. Full diagnostics: $NodeLog"
     }
 }
 finally {
