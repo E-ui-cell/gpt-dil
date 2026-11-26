@@ -28,7 +28,7 @@ permissions:
 
 concurrency:
   group: chatgpt-capture
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   capture-windows:
