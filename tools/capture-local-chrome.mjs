@@ -198,7 +198,7 @@ async function recordRequest(request) {
     const body = request.postDataBuffer();
     if (body && body.length) {
       record.requestBytes = body.length;
-      if (/(?:json|\\+json|x-www-form-urlencoded|multipart\\/form-data|application\\/(?:xml|graphql))/i.test(contentType)) {
+      if (/(?:json|\+json|x-www-form-urlencoded|multipart\/form-data|application\/(?:xml|graphql))/i.test(contentType)) {
         record.requestBody = await saveBody("requests", id, body, contentType);
       } else {
         record.requestBody = {
