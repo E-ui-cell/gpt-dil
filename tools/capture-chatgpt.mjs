@@ -26,6 +26,7 @@ const MAX_EVENT_STREAM_BYTES = 24 * 1024 * 1024;
 const MAX_REQUEST_SHAPE_BYTES = 4 * 1024 * 1024;
 const MAX_PROTOCOL_PAYLOADS = 3000;
 const MAX_PROTOCOL_PAYLOAD_BYTES = 64 * 1024 * 1024;
+const MAX_WEBSOCKET_FRAME_BYTES = 256 * 1024;
 const ALLOWED_ASSET_HOSTS = [
   "chatgpt.com",
   "openai.com",
@@ -387,6 +388,10 @@ function summarizeWebSocketFrame(frame) {
     };
   }
   const value = String(payload ?? "");
+  const valueBytes = Buffer.byteLength(value, "utf8");
+  if (valueBytes > MAX_WEBSOCKET_FRAME_BYTES) {
+    return { type: "text", bytes: valueBytes, skipped: "over-size-limit" };
+  }
   try {
     const parsed = JSON.parse(value);
     return {
@@ -404,6 +409,18 @@ function summarizeWebSocketFrame(frame) {
   }
 }
 
+async function readResponseBody(response, timeoutMs = 30000) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), timeoutMs);
+  });
+  try {
+    return await Promise.race([response.body(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function processStaticResponse(response, record) {
   const request = response.request();
   const rawUrl = response.url();
@@ -411,7 +428,7 @@ async function processStaticResponse(response, record) {
   const contentType = headers["content-type"] || "";
   const resourceType = request.resourceType();
 
-  if (!response.ok()) return;
+  const responseOk = response.ok();
 
   let parsedUrl;
   try {
@@ -421,7 +438,7 @@ async function processStaticResponse(response, record) {
   }
   if (!isRelevantHost(parsedUrl.hostname)) return;
 
-  const isStatic = isStaticTextAsset(rawUrl, contentType, resourceType);
+  const isStatic = responseOk && isStaticTextAsset(rawUrl, contentType, resourceType);
   const isJsonResponse =
     /(?:application|text)\/(?:[^;]+\+)?json/i.test(contentType);
 
@@ -437,7 +454,11 @@ async function processStaticResponse(response, record) {
       return;
     }
 
-    const body = await response.body();
+    const body = await readResponseBody(response);
+    if (!body) {
+      record.responseBody = { kind: "json", skipped: "response-body-timeout" };
+      return;
+    }
     if (!body.length || body.length > MAX_JSON_RESPONSE_BYTES) {
       record.responseBody = {
         kind: "json",
@@ -484,7 +505,11 @@ async function processStaticResponse(response, record) {
       return;
     }
 
-    const body = await response.body();
+    const body = await readResponseBody(response, 45000);
+    if (!body) {
+      record.responseBody = { kind: "event-stream", skipped: "response-body-timeout" };
+      return;
+    }
     if (!body.length || body.length > MAX_EVENT_STREAM_BYTES) {
       record.responseBody = {
         kind: "event-stream",
@@ -504,13 +529,17 @@ async function processStaticResponse(response, record) {
     return;
   }
 
-  if (!isStatic && /text\\/(?:plain|xml)|application\\/xml/i.test(contentType)) {
+  if (!isStatic && /text\/(?:plain|xml)|application\/xml/i.test(contentType)) {
     const declaredLength = Number(headers["content-length"] || 0);
     if (declaredLength > MAX_JSON_RESPONSE_BYTES) {
       record.responseBody = { kind: "text", skipped: "over-size-limit", bytes: declaredLength };
       return;
     }
-    const body = await response.body();
+    const body = await readResponseBody(response);
+    if (!body) {
+      record.responseBody = { kind: "text", skipped: "response-body-timeout" };
+      return;
+    }
     if (!body.length || body.length > MAX_JSON_RESPONSE_BYTES) {
       record.responseBody = { kind: "text", skipped: "empty-or-over-size-limit", bytes: body.length };
       return;
@@ -534,7 +563,11 @@ async function processStaticResponse(response, record) {
     return;
   }
 
-  const body = await response.body();
+  const body = await readResponseBody(response);
+  if (!body) {
+    record.assetSkipped = "response-body-timeout";
+    return;
+  }
   if (!body.length || body.length > MAX_ASSET_BYTES) {
     record.assetSkipped = "empty-or-over-size-limit";
     return;
@@ -783,6 +816,7 @@ async function main() {
     }
 
     const record = {
+      requestId: network.length + 1,
       atMs: Date.now() - startedAt.getTime(),
       method: request.method(),
       url: sanitizeUrl(rawUrl),
@@ -798,7 +832,7 @@ async function main() {
       record.requestBody = body;
       if (body.kind !== "omitted") {
         const rawBody = request.postData();
-        if (rawBody != null) {
+        if (rawBody != null && isRelevantHost(url.hostname)) {
           const contentType = request.headers()["content-type"] || "";
           storeProtocolPayload(
             "request",
@@ -1083,8 +1117,8 @@ async function main() {
   );
   await writeFile(
     path.join(OUTPUT_DIR, "protocol-payloads.jsonl"),
-    protocolPayloads.map((entry) => JSON.stringify(entry)).join("\\n") +
-      (protocolPayloads.length ? "\\n" : ""),
+    protocolPayloads.map((entry) => JSON.stringify(entry)).join("\n") +
+      (protocolPayloads.length ? "\n" : ""),
     "utf8",
   );
   for (const entry of network) {
