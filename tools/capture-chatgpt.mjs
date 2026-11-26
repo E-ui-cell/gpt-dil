@@ -153,12 +153,12 @@ function inspectRequestBody(request) {
     contentType = request.headers()["content-type"] || "";
   } catch {}
 
-  if (/application\\/x-www-form-urlencoded/i.test(contentType)) {
+  if (/application\/x-www-form-urlencoded/i.test(contentType)) {
     const fields = [...new Set([...new URLSearchParams(body).keys()])].sort();
     return { kind: "form-urlencoded", bytes, fields };
   }
 
-  if (/multipart\\/form-data/i.test(contentType)) {
+  if (/multipart\/form-data/i.test(contentType)) {
     const fields = [...new Set([...body.matchAll(/name="([^"]+)"/g)].map((match) => match[1]))].sort();
     return {
       kind: "multipart",
