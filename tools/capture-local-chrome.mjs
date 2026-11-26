@@ -311,6 +311,12 @@ async function recordResponse(response) {
   } catch (error) {
     record.responseBodyError = redactText(error?.message || error);
   }
+
+  if (/\\/conversation(?:\\/|$)/i.test(request.url())) {
+    for (const page of pages) {
+      if (!page.isClosed()) addPending(savePageSnapshot(page, "conversation-response"));
+    }
+  }
 }
 
 async function savePageSnapshot(page, reason) {
@@ -319,8 +325,11 @@ async function savePageSnapshot(page, reason) {
     const snapshot = await page.evaluate(async () => {
       const clone = document.documentElement.cloneNode(true);
       clone.querySelectorAll("script").forEach((script) => script.remove());
-      clone.querySelectorAll("input, textarea").forEach((field) => {
+      clone.querySelectorAll("input, textarea, select").forEach((field) => {
+        if ("value" in field) field.value = "";
         field.removeAttribute("value");
+        field.removeAttribute("checked");
+        field.removeAttribute("selected");
         field.textContent = "";
       });
       clone.querySelectorAll(
