@@ -211,6 +211,7 @@ function storeProtocolPayload(direction, record, contentType, rawBytes, payload)
   const entry = {
     direction,
     requestId: record.requestId ?? null,
+    frameUrl: record.frameUrl ?? null,
     method: record.method,
     url: record.url,
     status: record.status ?? null,
@@ -844,8 +845,14 @@ async function main() {
       return;
     }
 
+    let frameUrl = null;
+    try {
+      frameUrl = sanitizeUrl(request.frame().url());
+    } catch {}
+
     const record = {
       requestId: network.length + 1,
+      frameUrl,
       atMs: Date.now() - startedAt.getTime(),
       method: request.method(),
       url: sanitizeUrl(rawUrl),
