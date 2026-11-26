@@ -197,11 +197,11 @@ async function recordRequest(request) {
     const body = request.postDataBuffer();
     if (body && body.length) {
       record.requestBytes = body.length;
-      if (/(?:json|\\+json|x-www-form-urlencoded|multipart\\/form-data|text\\/|application\\/(?:xml|graphql))/i.test(contentType)) {
+      if (/(?:json|\\+json|x-www-form-urlencoded|multipart\\/form-data|application\\/(?:xml|graphql))/i.test(contentType)) {
         record.requestBody = await saveBody("requests", id, body, contentType);
       } else {
         record.requestBody = {
-          kind: "binary-metadata",
+          kind: "omitted-metadata",
           bytes: body.length,
           sha256: createHash("sha256").update(body).digest("hex"),
           values: "not recorded",
@@ -627,7 +627,7 @@ async function writeReport() {
     requests: network.length,
     responses: network.filter((item) => item.status !== undefined).length,
     requestBodies: network.filter((item) => item.requestBody && typeof item.requestBody === "string").length,
-    binaryRequestBodies: network.filter((item) => item.requestBody?.kind === "binary-metadata").length,
+    omittedRequestBodies: network.filter((item) => item.requestBody?.kind === "omitted-metadata").length,
     responseBodies: network.filter((item) => item.responseBody && (typeof item.responseBody === "string" || item.responseBody.path)).length,
     binaryResponseBodies: network.filter((item) => item.responseBody?.binary).length,
     websocketConnections: websocketRecords.length,
@@ -658,7 +658,7 @@ async function writeReport() {
       conversationContent: "included; this folder is private and must not be uploaded publicly",
       frameSnapshots: "main page and accessible iframe DOM snapshots; scripts and form values removed",
       multipartValuesAndFileContents: "not recorded",
-      binaryRequestBodies: "size and SHA-256 only; contents not recorded",
+      unstructuredRequestBodies: "size and SHA-256 only; contents not recorded",
     },
   };
 
@@ -673,7 +673,7 @@ async function writeReport() {
       "",
       "requests/: request payloads with credential-like fields redacted",
       "responses/: JSON, text, streaming and selected binary response bodies",
-      "Multipart field values and file contents are not recorded; other binary request bodies are represented by size and SHA-256 only.",
+      "Multipart field values and file contents are not recorded; unstructured request bodies are represented by size and SHA-256 only.",
       "websockets/: sent and received WebSocket frames",
       "dil-bridge.jsonl: DIL frame/worker/MessagePort messages in both directions; sensitive fields redacted",
       "snapshots/: sanitized DOM snapshots for the main page and accessible iframes, plus browser/storage metadata",
