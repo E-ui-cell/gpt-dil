@@ -7,7 +7,7 @@ export function sanitizeText(value) {
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g, "[JWT]")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL]")
     .replace(/([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|signature|sig|session[_-]?proof|session[_-]?id|proof|auth)=)[^&#\s]+/gi, "$1[REDACTED]")
-    .replace(/(["'](?:access[_-]?token|refresh[_-]?token|id[_-]?token|session[_-]?proof|session[_-]?id|api[_-]?key|client[_-]?secret|authorization|cookie|csrf|xsrf|sentinel|proof|signature|password|secret|token)["']\s*:\s*["'])[^"']*(["'])/gi, "$1[REDACTED]$2");
+    .replace(/(["'][^"']*(?:token|secret|password|passwd|authorization|cookie|csrf|xsrf|signature|proof|turnstile|credential|api.?key|email|username|sentinel|session|auth|bearer|jwt|phone|device.?id|user.?id|account.?id|ip.?address)[^"']*["']\s*:\s*["'])[^"']*(["'])/gi, "$1[REDACTED]$2");
 }
 
 export function sanitizePayload(value, depth = 0) {
