@@ -10,9 +10,28 @@ $ErrorActionPreference = 'Stop'
 $archiveUrl = 'https://github.com/E-ui-cell/gpt-dil/archive/refs/heads/main.zip'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('GPT-DIL-' + [guid]::NewGuid().ToString('N'))
 $sourceRoot = $PSScriptRoot
+$downloadSource = [string]::IsNullOrWhiteSpace($sourceRoot)
+
+if (-not $downloadSource -and (Test-Path -LiteralPath $sourceRoot)) {
+    try {
+        $sourceFullPath = [IO.Path]::GetFullPath($sourceRoot).TrimEnd(
+            [IO.Path]::DirectorySeparatorChar,
+            [IO.Path]::AltDirectorySeparatorChar
+        )
+        $installFullPath = [IO.Path]::GetFullPath($InstallPath).TrimEnd(
+            [IO.Path]::DirectorySeparatorChar,
+            [IO.Path]::AltDirectorySeparatorChar
+        )
+        if ($sourceFullPath -ieq $installFullPath) {
+            $downloadSource = $true
+        }
+    }
+    catch {
+    }
+}
 
 try {
-    if ([string]::IsNullOrWhiteSpace($sourceRoot) -or
+    if ($downloadSource -or
         -not (Test-Path -LiteralPath (Join-Path $sourceRoot 'README.md'))) {
 
         New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null

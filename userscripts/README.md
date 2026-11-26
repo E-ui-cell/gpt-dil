@@ -1,7 +1,7 @@
 # TAMPERMONKEY
 
-Installable userscripts will live here as individual .user.js files.
+Open the raw .user.js link to install.
 
-No payload modifier is included yet. The current request schema must be verified first.
+- plain-text-payload.user.js — adds a plain-text preference to outgoing user messages.
 
-Scripts must never log or store authorization headers, cookies, or Sentinel tokens.
+The instruction becomes part of the sent message. It does not disable Markdown or DIL rendering.
