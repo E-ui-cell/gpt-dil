@@ -57,9 +57,10 @@ test("removes model_dil_v2 from JSON while preserving fallback markdown", async 
   const response = await page.window.fetch(endpoint);
   const data = await response.json();
 
-  assert.equal(data.message.metadata.model_dil_v2, undefined);
+  assert.equal(data.message.metadata.model_dil_v2.code, undefined);
+  assert.equal(data.message.metadata.model_dil_v2.constants, undefined);
+  assert.equal(data.message.metadata.model_dil_v2.fallbackMarkdown, "Fallback text");
   assert.equal(data.message.metadata.keep, "metadata");
-  assert.equal(data.message.metadata.model_dil_v2?.fallbackMarkdown, undefined);
   assert.equal(response.status, 200);
 });
 
@@ -78,7 +79,8 @@ test("removes DIL metadata from SSE events and preserves other event data", asyn
   const text = await response.text();
 
   assert.match(text, /"other":1/);
-  assert.doesNotMatch(text, /model_dil_v2/);
+  assert.doesNotMatch(text, /"code":/);
+  assert.match(text, /"fallbackMarkdown":"Fallback"/);
   assert.match(text, /data: \[DONE\]/);
 });
 
