@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         GPT-DIL - Plain Text Payload
 // @namespace    https://github.com/E-ui-cell/gpt-dil
-// @version      0.2.1
-// @description  Terminal Mode: requests plain text without Markdown formatting.
+// @version      0.2.0
+// @description  Adds an editable custom text payload to outgoing ChatGPT user messages.
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @run-at       document-start
@@ -16,34 +16,21 @@
 (() => {
     "use strict";
 
-    const VERSION = "0.2.1";
-    const INSTANCE_KEY = "__GPT_DIL_TERMINAL_MODE__";
-    const LEGACY_VERSION_KEY = "__GPT_DIL_PLAIN_TEXT_VERSION__";
+    const VERSION = "0.2.0";
 
-    // EDIT THIS INSTRUCTION to customize terminal-mode output.
-    // It is appended to the latest user message; no request fields are added.
+    // EDIT THIS PAYLOAD. It is appended to the latest user message's text.
+    // Keep it as ordinary text; the existing JSON message structure is preserved.
     const CUSTOM_PAYLOAD_TEXT = [
-        "TERMINAL MODE: respond using plain, unformatted text only.",
-        "Do not use Markdown or rich-text formatting: no headings, bullets, numbered lists, tables, blockquotes, emphasis, strikethrough, Markdown links, or fenced code blocks.",
-        "Use ordinary text and line breaks. If multiple items are necessary, put each item on its own line without bullets or numbering.",
-        "Show commands, paths, logs, configuration, and source code as raw text, without code fences or decorative prefixes. Preserve meaningful indentation.",
-        "Do not add shell prompts such as $, >, or PS> unless they are part of the actual content. Never claim a command was executed unless it actually was.",
-        "Keep output concise and terminal-friendly. Avoid emoji and decorative symbols; preserve Unicode when needed."
-    ].join("\n");
+        "Please answer in plain text.",
+        "Avoid Markdown headings, bullets, numbered lists, tables, bold, italics, and code fences.",
+        "Use ordinary paragraphs. If code is necessary, output raw code without fences."
+    ].join(" ");
 
-    const log = (...args) => console.info("[TerminalMode]", ...args);
-    const warn = (...args) => console.warn("[TerminalMode]", ...args);
+    if (window.__GPT_DIL_PLAIN_TEXT_VERSION__ === VERSION) return;
+    window.__GPT_DIL_PLAIN_TEXT_VERSION__ = VERSION;
 
-    const previous = window[INSTANCE_KEY];
-    if (previous && previous.version === VERSION) return;
-    if (previous && typeof previous.stop === "function") previous.stop();
-
-    // The previous 0.2.0 script did not expose a stop hook. Avoid stacking
-    // another interceptor if both versions are manually injected in one page.
-    if (!previous && window[LEGACY_VERSION_KEY]) {
-        warn("An older instance is active. Reload the page to install this version cleanly.");
-        return;
-    }
+    const log = (...args) => console.info("[GPT-DIL]", ...args);
+    const warn = (...args) => console.warn("[GPT-DIL]", ...args);
 
     function isConversationPost(url, method) {
         if (String(method || "GET").toUpperCase() !== "POST") return false;
@@ -52,7 +39,8 @@
             const parsed = new URL(String(url), location.href);
             return (parsed.hostname === "chatgpt.com" ||
                     parsed.hostname === "chat.openai.com") &&
-                   /^\/backend-api\/(?:f\/)?conversation(?:\/prepare)?$/.test(parsed.pathname);
+                   (parsed.pathname === "/backend-api/f/conversation" ||
+                    parsed.pathname === "/backend-api/conversation");
         } catch (_) {
             return false;
         }
@@ -99,12 +87,8 @@
     }
 
     const nativeFetch = window.fetch;
-    let wrappedFetch = null;
-
     if (typeof nativeFetch === "function") {
-        wrappedFetch = async function(input, init) {
-            if (!enabled) return nativeFetch.apply(this, arguments);
-
+        window.fetch = async function(input, init) {
             const isRequest = typeof Request !== "undefined" && input instanceof Request;
             const url = isRequest ? input.url : input;
             const method = (init && init.method) || (isRequest && input.method) || "GET";
@@ -115,57 +99,52 @@
 
             try {
                 let rawBody = null;
-                const hasInitBody = !!init && Object.prototype.hasOwnProperty.call(init, "body");
 
-                if (hasInitBody) {
-                    if (typeof init.body !== "string") {
-                        warn("Matched conversation request has a non-string body; passed through unchanged.");
-                        return nativeFetch.apply(this, arguments);
-                    }
+                if (init && typeof init.body === "string") {
                     rawBody = init.body;
+                } else if (init && init.body != null) {
+                    warn("Matched conversation request, but its body is not a JSON string; passed through unchanged.");
+                    return nativeFetch.apply(this, arguments);
                 } else if (isRequest) {
                     rawBody = await input.clone().text();
                 }
 
                 if (typeof rawBody !== "string") {
-                    warn("Matched conversation request body could not be read; passed through unchanged.");
+                    warn("Matched conversation request, but could not read its body; passed through unchanged.");
                     return nativeFetch.apply(this, arguments);
                 }
 
                 const modifiedBody = modifyPayload(rawBody);
                 if (!modifiedBody) {
+                    warn("Conversation request did not match the known message shape; passed through unchanged.");
                     return nativeFetch.apply(this, arguments);
                 }
 
-                const nextInit = Object.assign({}, init || {}, { body: modifiedBody });
-                log("Terminal-mode instruction appended to conversation POST (fetch).");
+                log("Modified outgoing conversation POST (fetch). No headers or response data were read.");
 
                 if (isRequest) {
+                    const nextInit = Object.assign({}, init || {}, { body: modifiedBody });
                     return nativeFetch.call(this, new Request(input, nextInit));
                 }
+
+                const nextInit = Object.assign({}, init || {}, { body: modifiedBody });
                 return nativeFetch.call(this, input, nextInit);
             } catch (error) {
                 warn("Fetch interception failed; original request sent unchanged.", error && error.name);
                 return nativeFetch.apply(this, arguments);
             }
         };
-
-        window.fetch = wrappedFetch;
     } else {
         warn("fetch is unavailable; no fetch hook installed.");
     }
 
-    let nativeOpen = null;
-    let nativeSend = null;
-    let wrappedOpen = null;
-    let wrappedSend = null;
-
+    // Fallback for any conversation request sent through XMLHttpRequest.
     if (typeof XMLHttpRequest !== "undefined") {
         const xhrMeta = new WeakMap();
-        nativeOpen = XMLHttpRequest.prototype.open;
-        nativeSend = XMLHttpRequest.prototype.send;
+        const nativeOpen = XMLHttpRequest.prototype.open;
+        const nativeSend = XMLHttpRequest.prototype.send;
 
-        wrappedOpen = function(method, url) {
+        XMLHttpRequest.prototype.open = function(method, url) {
             xhrMeta.set(this, {
                 method: String(method || "GET").toUpperCase(),
                 url: String(url)
@@ -173,50 +152,18 @@
             return nativeOpen.apply(this, arguments);
         };
 
-        wrappedSend = function(body) {
+        XMLHttpRequest.prototype.send = function(body) {
             const meta = xhrMeta.get(this);
-            if (enabled && meta && isConversationPost(meta.url, meta.method) && typeof body === "string") {
+            if (meta && isConversationPost(meta.url, meta.method) && typeof body === "string") {
                 const modifiedBody = modifyPayload(body);
                 if (modifiedBody) {
                     body = modifiedBody;
-                    log("Terminal-mode instruction appended to conversation POST (XHR).");
+                    log("Modified outgoing conversation POST (XHR).");
                 }
             }
             return nativeSend.call(this, body);
         };
-
-        XMLHttpRequest.prototype.open = wrappedOpen;
-        XMLHttpRequest.prototype.send = wrappedSend;
     }
 
-    let enabled = true;
-    const instance = {
-        version: VERSION,
-        get enabled() {
-            return enabled;
-        },
-        toggle() {
-            enabled = !enabled;
-            log("Enabled:", enabled);
-            return enabled;
-        },
-        stop() {
-            enabled = false;
-            if (wrappedFetch && window.fetch === wrappedFetch) window.fetch = nativeFetch;
-            if (nativeOpen && XMLHttpRequest.prototype.open === wrappedOpen) {
-                XMLHttpRequest.prototype.open = nativeOpen;
-            }
-            if (nativeSend && XMLHttpRequest.prototype.send === wrappedSend) {
-                XMLHttpRequest.prototype.send = nativeSend;
-            }
-            if (window[INSTANCE_KEY] === instance) delete window[INSTANCE_KEY];
-            if (window[LEGACY_VERSION_KEY] === VERSION) delete window[LEGACY_VERSION_KEY];
-            log("Stopped.");
-        }
-    };
-
-    window[INSTANCE_KEY] = instance;
-    window[LEGACY_VERSION_KEY] = VERSION;
-
-    log("Installed", VERSION, "(request-side prompt instruction only).");
+    log("Custom conversation payload hook active", VERSION);
 })();
