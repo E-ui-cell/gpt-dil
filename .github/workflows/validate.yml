@@ -6,12 +6,18 @@ on:
     paths:
       - "tools/**"
       - "tests/**"
+      - "userscripts/**"
+      - "docs/**"
+      - "README.md"
       - "Capture-Local.ps1"
       - ".github/workflows/**"
   pull_request:
     paths:
       - "tools/**"
       - "tests/**"
+      - "userscripts/**"
+      - "docs/**"
+      - "README.md"
       - "Capture-Local.ps1"
       - ".github/workflows/**"
 
@@ -37,6 +43,7 @@ jobs:
           node --check tools/capture-local-chrome.mjs
           node --check tools/dil-bridge-hook.js
           node --check tools/analyze-dil-bridge.mjs
+          node --check userscripts/plain-text-payload.user.js
           $testFiles = Get-ChildItem -Path tests -Filter "*.test.mjs" -File
           if (-not $testFiles) { throw "No tests found" }
           foreach ($testFile in $testFiles) {
