@@ -14,7 +14,7 @@ Small browser tools for ChatGPT.
 
 ## Block DIL rendering
 
-Install the [block-dil userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/block-dil.user.js). It removes `model_dil_v2` from JSON and SSE conversation responses while leaving `fallbackMarkdown` and the rest of the response intact. It adds no UI. This is an experimental response rewrite; verify the actual frontend behavior after installation.
+Install the [block-dil userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/block-dil.user.js). It removes the executable DIL fields (`code`, `constants`, and `appData`) from `model_dil_v2` in JSON and SSE conversation responses, retaining `fallbackMarkdown` and its version. It adds no UI. This is an experimental response rewrite; verify the actual frontend behavior after installation.
 
 ## Model pin userscript
 
