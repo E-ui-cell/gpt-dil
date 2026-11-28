@@ -9,16 +9,15 @@ This script adds **no floating panel or custom controls**. Keep the separate nat
 It combines the two earlier techniques:
 - Rewrite successful `/backend-api/conversation/init` JSON responses so `default_model_slug` and `intended_default_model_slug` are set to Luna WM.
 - Patch outgoing POSTs to `/backend-api/(f/)conversation` and `/prepare` using the existing top-level fields `model`, `model_slug`, and `thinking_effort`.
-- Optionally append the native `reason` value to `system_hints`.
+- Preserve `system_hints` exactly as supplied by the native UI; the script does not turn Think on or off.
 - Observe response model fields and reasoning metadata, including SSE records.
 
 Configuration is at the top of the script:
 - `TARGET_MODEL = "gpt-5.6-luna-wm"`
 - `TARGET_MODEL_SLUG = "auto"` (kept separate intentionally, as in the previous 3.2.0 script)
 - `TARGET_THINKING_EFFORT = "extended"`
-- `ENABLE_REASON_HINT = true`
 
-The clean no-Tampermonkey capture showed native requests using `model: "auto"`; Think added `system_hints: ["reason"]`; the server resolved Instant to `gpt-6` and Think to `gpt-6-t-mini`. The model catalogue advertised Luna and Terra WM with `standard` and `extended` effort values.
+The clean no-Tampermonkey capture showed native requests using `model: "auto"`; Think added `system_hints: ["reason"]`; the server resolved Instant to `gpt-6` and Think to `gpt-6-t-mini`. The earlier script version forcibly appended that hint, which unintentionally enabled native Think and routed to `gpt-6-t-mini`. The current version leaves `system_hints` untouched while retaining the configured `thinking_effort`. The model catalogue advertised Luna and Terra WM with `standard` and `extended` effort values.
 
 The capture did **not** prove that a forced Luna slug or `thinking_effort` is accepted. Check the console's server metadata after sending a message. A requested model is not proof of the resolved model. The script does not bypass account limits or model availability.
 
