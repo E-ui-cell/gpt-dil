@@ -8,6 +8,7 @@ on:
       - "tests/**"
       - "userscripts/**"
       - "docs/**"
+      - "evidence/**"
       - "Capture-Local.ps1"
       - ".github/workflows/chatgpt-capture.yml"
   schedule:
@@ -192,6 +193,10 @@ jobs:
           if [ -d release-input/linux ]; then
             tar -czf release-assets/chatgpt-capture-linux.tar.gz -C release-input/linux .
           fi
+          if [ -f evidence/chatgpt-web-model-baseline-2026-11-28.json ]; then
+            cp evidence/chatgpt-web-model-baseline-2026-11-28.json release-assets/
+            cp evidence/README.md release-assets/protocol-baseline-README.md
+          fi
           cat > release-assets/manifest.json <<EOF
           {
             "run_id": "${{ github.run_id }}",
@@ -200,14 +205,15 @@ jobs:
             "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "windows": $([ -d release-input/windows ] && echo true || echo false),
             "linux": $([ -d release-input/linux ] && echo true || echo false),
-            "scope": "unauthenticated public frontend; sanitized protocol payload values; fixed anonymous probe"
+            "local_protocol_baseline": $([ -f evidence/chatgpt-web-model-baseline-2026-11-28.json ] && echo true || echo false),
+            "scope": "unauthenticated public frontend plus sanitized local authenticated model/Think metadata; no conversation text, account identifiers, credentials or cookies"
           }
           EOF
           TAG="capture-${{ github.run_id }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/* --clobber
           else
-            gh release create "$TAG" release-assets/* --title "ChatGPT capture #${{ github.run_number }}" --notes "Automated Windows/Linux public-frontend capture. Each browser engine sends one fixed anonymous test prompt to exercise conversation streaming. Protocol request/response and WebSocket text payloads are credential-redacted; multipart values, file contents, cookies, authorization headers and authenticated user data are not published."
+            gh release create "$TAG" release-assets/* --title "ChatGPT capture #${{ github.run_number }}" --notes "Automated Windows/Linux public-frontend capture plus a manually sanitized local authenticated model/Think baseline. The local baseline contains only selected model catalogue fields, native request flags and server-resolved model/reasoning metadata. No conversation text, account identifiers, cookies, authorization values or account-specific limits are published. Cloud captures use an anonymous fixed test prompt; local raw captures are not included."
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
