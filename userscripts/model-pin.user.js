@@ -22,7 +22,6 @@
     const TARGET_MODEL_SLUG = "auto";
 
     const TARGET_THINKING_EFFORT = "extended";
-    const ENABLE_REASON_HINT = true;
 
     // Rewrite the model defaults returned by /conversation/init.
     const PATCH_INIT_DEFAULT = true;
@@ -101,29 +100,18 @@
         const previous = {
             model: payload.model,
             model_slug: payload.model_slug,
-            thinking_effort: payload.thinking_effort,
-            system_hints: Array.isArray(payload.system_hints)
-                ? payload.system_hints.slice()
-                : payload.system_hints
+            thinking_effort: payload.thinking_effort
         };
 
         payload.model = TARGET_MODEL;
         payload.model_slug = TARGET_MODEL_SLUG;
         payload.thinking_effort = TARGET_THINKING_EFFORT;
 
-        if (ENABLE_REASON_HINT) {
-            const hints = Array.isArray(payload.system_hints)
-                ? payload.system_hints.slice()
-                : [];
-            if (!hints.includes("reason")) hints.push("reason");
-            payload.system_hints = hints;
-        }
 
         if (
             previous.model === payload.model &&
             previous.model_slug === payload.model_slug &&
-            previous.thinking_effort === payload.thinking_effort &&
-            JSON.stringify(previous.system_hints) === JSON.stringify(payload.system_hints)
+            previous.thinking_effort === payload.thinking_effort
         ) {
             return body;
         }
@@ -137,7 +125,6 @@
             "->",
             payload.thinking_effort
         );
-        console.info("system_hints:", previous.system_hints ?? "unset", "->", payload.system_hints ?? "unset");
         console.groupEnd();
 
         return JSON.stringify(payload);
@@ -408,7 +395,5 @@
         TARGET_MODEL_SLUG,
         "| effort:",
         TARGET_THINKING_EFFORT,
-        "| reason hint:",
-        ENABLE_REASON_HINT
     );
 })();
