@@ -66,7 +66,7 @@ function payload(extra = {}) {
   };
 }
 
-test("pins outgoing model, model_slug, effort and native reason hint", async () => {
+test("pins outgoing model, model_slug and effort without changing native Think state", async () => {
   const page = makePage();
   await page.window.fetch(endpoint, {
     method: "POST",
@@ -78,8 +78,32 @@ test("pins outgoing model, model_slug, effort and native reason hint", async () 
   assert.equal(sent.model, "gpt-5.6-luna-wm");
   assert.equal(sent.model_slug, "auto");
   assert.equal(sent.thinking_effort, "extended");
-  assert.deepEqual(sent.system_hints, ["existing", "reason"]);
+  assert.deepEqual(sent.system_hints, ["existing"]);
   assert.deepEqual(sent.untouched, { keep: true });
+});
+
+test("does not add a reason hint when native Think is off", async () => {
+  const page = makePage();
+  await page.window.fetch(endpoint, {
+    method: "POST",
+    body: JSON.stringify(payload())
+  });
+
+  const sent = JSON.parse(page.calls[0].init.body);
+  assert.equal(sent.thinking_effort, "extended");
+  assert.equal(Object.hasOwn(sent, "system_hints"), false);
+});
+
+test("preserves the native reason hint when Think is on", async () => {
+  const page = makePage();
+  await page.window.fetch(endpoint, {
+    method: "POST",
+    body: JSON.stringify(payload({ system_hints: ["reason"] }))
+  });
+
+  const sent = JSON.parse(page.calls[0].init.body);
+  assert.equal(sent.thinking_effort, "extended");
+  assert.deepEqual(sent.system_hints, ["reason"]);
 });
 
 test("rewrites conversation/init default model fields and preserves other data", async () => {
