@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "purpose": "Sanitized authenticated ChatGPT web-client protocol baseline for a browser userscript experiment. This is not an API specification and may change.",
+  "source": {
+    "capture_type": "local authenticated browser capture",
+    "captured_at_utc": "2026-11-28T01:17:56.851Z",
+    "tampermonkey_installed": false,
+    "raw_capture_publication": "not included; raw capture is private and retains conversation content"
+  },
+  "native_state": {
+    "default_model_slug": "auto",
+    "intended_default_model_slug": "auto"
+  },
+  "native_turns": {
+    "instant": {
+      "request": {
+        "action": "next",
+        "model": "auto",
+        "system_hints": null,
+        "message_count": 1
+      },
+      "response": {
+        "resolved_model_slug": "gpt-6",
+        "model_slug": "gpt-6",
+        "reasoning_recap_present": false
+      }
+    },
+    "think_enabled": {
+      "request": {
+        "action": "next",
+        "model": "auto",
+        "system_hints": ["reason"],
+        "message_count": 1,
+        "thinking_effort_field_present": false
+      },
+      "response": {
+        "resolved_model_slug": "gpt-6-t-mini",
+        "model_slug": "gpt-6-t-mini",
+        "reasoning_recap_present": true,
+        "reasoning_status": "reasoning_ended",
+        "reasoning_duration_seconds": 1,
+        "reasoning_recap_type": "hide_all",
+        "cot_version": "v5",
+        "reasoning_text_included": false
+      }
+    }
+  },
+  "model_catalogue_subset": [
+    {
+      "slug": "gpt-5.6-luna-wm",
+      "title": "GPT-5.6 Luna",
+      "description": "Our latest and most advanced model",
+      "reasoning_type": "reasoning",
+      "configurable_thinking_effort": true,
+      "thinking_efforts": [
+        {
+          "thinking_effort": "standard",
+          "full_label": "Thinking",
+          "mobile_full_label": "Thinking",
+          "short_label": "Standard",
+          "description": "Balanced thinking and speed"
+        },
+        {
+          "thinking_effort": "extended",
+          "full_label": "Extended thinking",
+          "mobile_full_label": "Extended",
+          "short_label": "Extended",
+          "description": "Thinks longer for complex questions"
+        }
+      ],
+      "is_work_mode_model": true,
+      "enabled_tools": ["tools", "tools2", "search", "image_gen_tool_enabled", "sites"]
+    },
+    {
+      "slug": "gpt-5.6-terra-wm",
+      "title": "GPT-5.6 Terra",
+      "description": "Our latest and most advanced model",
+      "reasoning_type": "reasoning",
+      "configurable_thinking_effort": true,
+      "thinking_efforts": [
+        {
+          "thinking_effort": "standard",
+          "full_label": "Thinking",
+          "mobile_full_label": "Thinking",
+          "short_label": "Standard",
+          "description": "Balanced thinking and speed"
+        },
+        {
+          "thinking_effort": "extended",
+          "full_label": "Extended thinking",
+          "mobile_full_label": "Extended",
+          "short_label": "Extended",
+          "description": "Thinks longer for complex questions"
+        }
+      ],
+      "is_work_mode_model": true,
+      "enabled_tools": ["tools", "tools2", "search", "image_gen_tool_enabled", "sites"]
+    },
+    {
+      "slug": "gpt-6",
+      "title": "GPT-6",
+      "description": "Our latest and most advanced model",
+      "reasoning_type": "auto",
+      "configurable_thinking_effort": false,
+      "thinking_efforts": [],
+      "is_work_mode_model": false,
+      "enabled_tools": ["tools", "tools2", "search", "image_gen_tool_enabled"]
+    },
+    {
+      "slug": "gpt-6-t-mini",
+      "title": "GPT-6",
+      "description": "Our latest and most advanced model",
+      "reasoning_type": "reasoning",
+      "configurable_thinking_effort": false,
+      "thinking_efforts": [],
+      "is_work_mode_model": false,
+      "enabled_tools": ["tools", "tools2", "search", "image_gen_tool_enabled"]
+    },
+    {
+      "slug": "auto",
+      "title": "Auto",
+      "description": "Use the right model for my request",
+      "reasoning_type": "auto",
+      "configurable_thinking_effort": false,
+      "thinking_efforts": [],
+      "is_work_mode_model": false,
+      "enabled_tools": ["tools", "tools2", "search", "image_gen_tool_enabled"]
+    }
+  ],
+  "observations": [
+    "The native conversation request used top-level model=\"auto\" in both captured turns.",
+    "The native Think-enabled turn added system_hints=[\"reason\"].",
+    "The server resolved the Instant turn to gpt-6 and the Think-enabled turn to gpt-6-t-mini.",
+    "The Think-enabled response included reasoning recap metadata; the recap text itself is deliberately omitted.",
+    "The native Think-enabled request did not contain a thinking_effort field.",
+    "The catalogue advertised gpt-5.6-luna-wm and gpt-5.6-terra-wm as work-mode models with configurable standard and extended effort.",
+    "This capture does not test a forced custom model value or a custom thinking_effort value."
+  ],
+  "privacy": {
+    "user_message_text_included": false,
+    "assistant_message_text_included": false,
+    "conversation_ids_included": false,
+    "request_ids_included": false,
+    "account_identifiers_included": false,
+    "cookies_or_tokens_included": false,
+    "account_usage_limits_included": false,
+    "raw_headers_included": false
+  }
+}
