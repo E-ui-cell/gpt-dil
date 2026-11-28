@@ -2,38 +2,41 @@
 
 Small browser tools for ChatGPT.
 
-# WHAT'S INSIDE
+## What's inside
 
 - uBlock Origin filters
-- Tampermonkey userscripts
+- Tampermonkey userscripts:
+  - [Model pin and reasoning](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/model-pin.user.js)
   - [Plain-text custom payload hook](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js)
 - Automated protocol capture
 - Windows installer
 
-# INSTALL
+## Tampermonkey: model pin
 
-irm https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/Install.ps1 | iex
+Install the [model-pin userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/model-pin.user.js). It adds a panel to select a ChatGPT web model slug, thinking effort, and optional reason hint. The panel also reports the server-resolved model when the response exposes it.
 
-# CUSTOM PAYLOAD
+See [model-pin documentation](docs/model-pin.md) and the [sanitized authenticated protocol baseline](evidence/chatgpt-web-model-baseline-2026-11-28.json).
 
-Install the [Tampermonkey script](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js). Edit the `CUSTOM_PAYLOAD_TEXT` block near the top to change the text appended to the latest user message.
+## Custom text payload
 
-# CAPTURE
+Install the [plain-text userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js). Edit its CUSTOM_PAYLOAD_TEXT block to change the text appended to the latest user message.
 
-Daily Windows + Linux captures are published in [Releases](https://github.com/E-ui-cell/gpt-dil/releases). They include sanitized anonymous request/response payloads, completed stream data, WebSocket text/JSON frames, public assets, iframe snapshots and automated DIL-symbol/endpoint analysis.
+## Capture
 
-# LOCAL PROTOCOL
+Daily Windows + Linux captures are published in [Releases](https://github.com/E-ui-cell/gpt-dil/releases). They include sanitized anonymous request/response payloads, completed stream data, WebSocket text/JSON frames, public assets, iframe snapshots, and automated DIL-symbol/endpoint analysis.
 
-Run `.\Capture-Local.ps1` in PowerShell.
+Authenticated local captures can contain conversation text. Keep raw local captures private; only publish a separately reviewed and sanitized extract.
 
-This opens a separate Chrome profile for authenticated traffic capture, including DIL frame and MessagePort traffic. Sign in there and use ChatGPT. Captures stay on your PC.
+## Local protocol
 
-Analyze DIL runner lifetimes and command traffic with `node tools/analyze-dil-bridge.mjs <path-to-dil-bridge.jsonl>`.
+Run .\Capture-Local.ps1 in PowerShell. This opens a separate Chrome profile for authenticated traffic capture, including DIL frame and MessagePort traffic. Sign in there and use ChatGPT. Captures stay on your PC.
 
-# UPDATE
+Analyze DIL runner lifetimes and command traffic with node tools/analyze-dil-bridge.mjs <path-to-dil-bridge.jsonl>.
 
-Run `.\Install.ps1 -Force` from the installed folder.
+## Install and update
 
-# STATUS
+Run .\Install.ps1 -Force from the installed folder.
 
-Experimental. Browser settings are never changed automatically.
+## Status
+
+Experimental. Browser settings are never changed automatically. The ChatGPT web endpoint is private and unsupported; its format can change.
