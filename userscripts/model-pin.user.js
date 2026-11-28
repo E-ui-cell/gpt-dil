@@ -1,13 +1,11 @@
 // ==UserScript==
-// @name         GPT-DIL - Model Pin and Reasoning
+// @name         ChatGPT - Luna Model Pin + Reasoning
 // @namespace    https://github.com/E-ui-cell/gpt-dil
-// @version      0.1.0
-// @description  Experimental ChatGPT web model and reasoning-effort selector.
+// @version      0.2.0
+// @description  Set the native ChatGPT default model and patch conversation model/reasoning fields.
 // @match        https://chatgpt.com/*
-// @match        https://chat.openai.com/*
 // @run-at       document-start
-// @inject-into  page
-// @noframes
+// @sandbox      MAIN
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/model-pin.user.js
 // @downloadURL  https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/model-pin.user.js
@@ -16,319 +14,401 @@
 (() => {
     "use strict";
 
-    const VERSION = "0.1.0";
-    const KEY = "__GPT_DIL_MODEL_PIN_CONFIG_V1__";
-    const DEFAULTS = {
-        enabled: true,
-        model: "gpt-5.6-luna-wm",
-        effort: "standard",
-        reasonHint: false
-    };
+    // Configuration. No custom UI is added.
+    const TARGET_MODEL = "gpt-5.6-luna-wm";
 
-    if (window.__GPT_DIL_MODEL_PIN_VERSION__ === VERSION) return;
-    window.__GPT_DIL_MODEL_PIN_VERSION__ = VERSION;
+    // Kept separate from TARGET_MODEL to preserve the model_slug behavior
+    // used by the previous 3.2.0 test script. Set to TARGET_MODEL to test both.
+    const TARGET_MODEL_SLUG = "auto";
 
-    let statusNode = null;
-    let lastRequest = null;
+    const TARGET_THINKING_EFFORT = "extended";
+    const ENABLE_REASON_HINT = true;
 
-    const log = (...args) => console.info("[GPT-DIL Model Pin]", ...args);
-    const warn = (...args) => console.warn("[GPT-DIL Model Pin]", ...args);
+    // Rewrite the model defaults returned by /conversation/init.
+    const PATCH_INIT_DEFAULT = true;
 
-    function config() {
-        try {
-            const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
-            return Object.assign({}, DEFAULTS, saved && typeof saved === "object" ? saved : {});
-        } catch (_) {
-            return Object.assign({}, DEFAULTS);
-        }
+    // Patch the outgoing generation request.
+    const PATCH_CONVERSATION_REQUEST = true;
+
+    const INIT_PATTERN =
+        /\/backend-api\/(?:f\/)?conversation\/init(?:[?#]|$)/;
+
+    const PATCH_PATTERN =
+        /\/backend-api\/(?:f\/)?conversation(?:\/prepare)?(?:[?#]|$)/;
+
+    const OBSERVE_PATTERN =
+        /\/backend-api\/(?:f\/)?conversation(?:\/(?:prepare|init))?(?:[/?#]|$)/;
+
+    const KEY = "__GPT_DIL_LUNA_MODEL_PIN__";
+    const MODEL_FIELDS = new Set([
+        "model",
+        "model_slug",
+        "default_model_slug",
+        "resolved_model_slug",
+        "last_message_model_slug",
+        "intended_default_model_slug"
+    ]);
+
+    // Remove an earlier instance before installing a new one.
+    window[KEY]?.stop?.();
+
+    let enabled = true;
+
+    const nativeFetch = window.fetch;
+    const xhrOpen = XMLHttpRequest.prototype.open;
+    const xhrSend = XMLHttpRequest.prototype.send;
+    const xhrInfo = new WeakMap();
+
+    function getUrl(input) {
+        if (typeof input === "string") return input;
+        if (typeof URL !== "undefined" && input instanceof URL) return input.href;
+        return input?.url || "";
     }
 
-    function save(next) {
-        try {
-            localStorage.setItem(KEY, JSON.stringify(next));
-        } catch (error) {
-            warn("Could not save settings:", error && error.name);
-        }
+    function getMethod(input, init) {
+        const isRequest =
+            typeof Request !== "undefined" && input instanceof Request;
+
+        return String(
+            init?.method || (isRequest ? input.method : "GET")
+        ).toUpperCase();
     }
 
-    function setStatus(message) {
-        if (statusNode) statusNode.textContent = message;
-        log(message);
+    function isConversationPatch(url, method) {
+        return method === "POST" && PATCH_PATTERN.test(url) &&
+            !INIT_PATTERN.test(url);
     }
 
-    function isConversationPost(url, method) {
-        if (String(method || "GET").toUpperCase() !== "POST") return false;
+    function patchBody(body, transport) {
+        if (typeof body !== "string") {
+            console.warn("[ModelPin] Unsupported request body; unchanged:", transport);
+            return body;
+        }
+
+        let payload;
         try {
-            const parsed = new URL(String(url), location.href);
-            return (parsed.hostname === "chatgpt.com" || parsed.hostname === "chat.openai.com") &&
-                (parsed.pathname === "/backend-api/f/conversation" ||
-                 parsed.pathname === "/backend-api/conversation");
-        } catch (_) {
-            return false;
-        }
-    }
-
-    function patchPayload(raw) {
-        let body;
-        try {
-            body = JSON.parse(raw);
-        } catch (_) {
-            return null;
+            payload = JSON.parse(body);
+        } catch {
+            console.warn("[ModelPin] Request body isn't JSON; unchanged:", transport);
+            return body;
         }
 
-        if (!body || typeof body !== "object" || !Array.isArray(body.messages)) return null;
-
-        const cfg = config();
-        if (!cfg.enabled) return null;
-
-        const model = String(cfg.model || "").trim();
-        if (!/^[a-zA-Z0-9._:-]{1,120}$/.test(model)) {
-            setStatus("Invalid model slug. Request passed through unchanged.");
-            return null;
+        if (!payload || typeof payload !== "object" ||
+            !Object.prototype.hasOwnProperty.call(payload, "model")) {
+            return body;
         }
 
-        const effort = String(cfg.effort || "native").toLowerCase();
-        if (!["native", "standard", "extended"].includes(effort)) {
-            setStatus("Invalid effort setting. Request passed through unchanged.");
-            return null;
-        }
-
-        // The clean native capture uses top-level "model". It does not use model_slug.
-        body.model = model;
-
-        // Experimental: the native Think capture did not contain thinking_effort.
-        // This option is based on the model catalogue's advertised effort values.
-        if (effort === "standard" || effort === "extended") {
-            body.thinking_effort = effort;
-        }
-
-        if (cfg.reasonHint) {
-            const hints = Array.isArray(body.system_hints) ? body.system_hints.slice() : [];
-            if (!hints.includes("reason")) hints.push("reason");
-            body.system_hints = hints;
-        }
-
-        const info = {
-            requestedModel: model,
-            effort: effort,
-            reasonHint: Boolean(cfg.reasonHint)
+        const previous = {
+            model: payload.model,
+            model_slug: payload.model_slug,
+            thinking_effort: payload.thinking_effort,
+            system_hints: Array.isArray(payload.system_hints)
+                ? payload.system_hints.slice()
+                : payload.system_hints
         };
-        lastRequest = info;
-        setStatus("Modified request: " + model + " | effort: " + effort +
-            " | reason hint: " + (info.reasonHint ? "on" : "off"));
 
-        return { body: JSON.stringify(body), info: info };
-    }
+        payload.model = TARGET_MODEL;
+        payload.model_slug = TARGET_MODEL_SLUG;
+        payload.thinking_effort = TARGET_THINKING_EFFORT;
 
-    function collectMetadata(value, found, depth) {
-        if (depth > 16 || value == null || typeof value !== "object") return;
-        if (Array.isArray(value)) {
-            for (const item of value) collectMetadata(item, found, depth + 1);
-            return;
+        if (ENABLE_REASON_HINT) {
+            const hints = Array.isArray(payload.system_hints)
+                ? payload.system_hints.slice()
+                : [];
+            if (!hints.includes("reason")) hints.push("reason");
+            payload.system_hints = hints;
         }
 
-        for (const [key, item] of Object.entries(value)) {
-            if (key === "resolved_model_slug" && typeof item === "string") found.resolved = item;
-            if (key === "model_slug" && typeof item === "string" && !found.model) found.model = item;
-            if (key === "reasoning_status" && typeof item === "string") found.reasoningStatus = item;
-            if (key === "content_type" && item === "reasoning_recap") found.reasoningRecap = true;
-            collectMetadata(item, found, depth + 1);
+        if (
+            previous.model === payload.model &&
+            previous.model_slug === payload.model_slug &&
+            previous.thinking_effort === payload.thinking_effort &&
+            JSON.stringify(previous.system_hints) === JSON.stringify(payload.system_hints)
+        ) {
+            return body;
+        }
+
+        console.groupCollapsed("[ModelPin] Outgoing conversation payload");
+        console.info("model:", previous.model, "->", payload.model);
+        console.info("model_slug:", previous.model_slug ?? "unset", "->", payload.model_slug);
+        console.info(
+            "thinking_effort:",
+            previous.thinking_effort ?? "default",
+            "->",
+            payload.thinking_effort
+        );
+        console.info("system_hints:", previous.system_hints ?? "unset", "->", payload.system_hints ?? "unset");
+        console.groupEnd();
+
+        return JSON.stringify(payload);
+    }
+
+    function rewriteInitResponse(response, url) {
+        if (!PATCH_INIT_DEFAULT || !response.ok) return Promise.resolve(response);
+
+        return response.clone().json().then(data => {
+            if (!data || typeof data !== "object") return response;
+
+            const previous = {
+                default: data.default_model_slug,
+                intended: data.intended_default_model_slug
+            };
+
+            data.default_model_slug = TARGET_MODEL;
+            data.intended_default_model_slug = TARGET_MODEL;
+
+            const headers = new Headers(response.headers);
+            headers.delete("content-length");
+            headers.delete("content-encoding");
+            headers.delete("transfer-encoding");
+
+            console.info(
+                "[ModelPin] conversation/init defaults:",
+                previous,
+                "->",
+                TARGET_MODEL
+            );
+
+            return new Response(JSON.stringify(data), {
+                status: response.status,
+                statusText: response.statusText,
+                headers
+            });
+        }).catch(error => {
+            console.warn("[ModelPin] Init response rewrite failed; original response kept:", error);
+            return response;
+        });
+    }
+
+    function reportModelFields(value, source) {
+        const found = [];
+
+        function walk(node, path, depth) {
+            if (depth > 14 || node === null || typeof node !== "object") return;
+
+            if (Array.isArray(node)) {
+                node.forEach((item, index) =>
+                    walk(item, path + "[" + index + "]", depth + 1)
+                );
+                return;
+            }
+
+            for (const [key, child] of Object.entries(node)) {
+                const childPath = path ? path + "." + key : key;
+
+                if (MODEL_FIELDS.has(key)) {
+                    found.push({ path: childPath, value: child });
+                }
+
+                if (key === "reasoning_status" ||
+                    key === "reasoning_recap_type" ||
+                    key === "cot_version") {
+                    found.push({ path: childPath, value: child });
+                }
+
+                if (key === "content_type" && child === "reasoning_recap") {
+                    found.push({ path: childPath, value: child });
+                }
+
+                walk(child, childPath, depth + 1);
+            }
+        }
+
+        walk(value, "", 0);
+
+        if (found.length) {
+            console.groupCollapsed("[ModelPin] Server metadata (" + source + ")");
+            for (const item of found) console.info(item.path, item.value);
+            console.groupEnd();
         }
     }
 
-    function inspectResponse(text) {
-        const found = { resolved: null, model: null, reasoningStatus: null, reasoningRecap: false };
-        if (typeof text !== "string" || !text) return found;
+    function inspectText(text, source) {
+        if (typeof text !== "string" || !text.trim()) return;
 
         try {
-            collectMetadata(JSON.parse(text), found, 0);
-            return found;
-        } catch (_) {
-            // The conversation endpoint commonly streams SSE.
+            reportModelFields(JSON.parse(text), source);
+            return;
+        } catch {
+            // Conversation response may be SSE.
         }
 
         for (const line of text.split(/\r?\n/)) {
             const trimmed = line.trim();
             if (!trimmed.startsWith("data:")) continue;
+
             const data = trimmed.slice(5).trim();
             if (!data || data === "[DONE]") continue;
+
             try {
-                collectMetadata(JSON.parse(data), found, 0);
-            } catch (_) {
-                // Ignore non-JSON stream records.
+                reportModelFields(JSON.parse(data), source + " (SSE)");
+            } catch {
+                // Ignore non-JSON SSE lines.
             }
         }
-        return found;
     }
 
-    function reportResponse(status, text, info) {
-        const found = inspectResponse(text);
-        const actual = found.resolved || found.model || "not reported";
-        const reasoning = found.reasoningStatus || (found.reasoningRecap ? "recap present" : "no reasoning metadata observed");
-        setStatus("HTTP " + status + " | requested: " + (info ? info.requestedModel : "unknown") +
-            " | resolved: " + actual + " | reasoning: " + reasoning);
-    }
-
-    function observeResponse(response, info) {
-        try {
-            response.clone().text().then(text => reportResponse(response.status, text, info)).catch(error => {
-                warn("Could not inspect response metadata:", error && error.name);
-            });
-        } catch (error) {
-            warn("Could not clone response:", error && error.name);
+    function observeResponse(response, url) {
+        if (INIT_PATTERN.test(url)) {
+            return rewriteInitResponse(response, url);
         }
-        return response;
+
+        if (!OBSERVE_PATTERN.test(url)) return Promise.resolve(response);
+
+        return response.clone().text().then(text => {
+            inspectText(text, url);
+            return response;
+        }).catch(() => response);
     }
 
-    const nativeFetch = window.fetch;
-    if (typeof nativeFetch === "function") {
-        window.fetch = async function(input, init) {
-            const isRequest = typeof Request !== "undefined" && input instanceof Request;
-            const url = isRequest ? input.url : input;
-            const method = (init && init.method) || (isRequest && input.method) || "GET";
-            if (!isConversationPost(url, method)) return nativeFetch.apply(this, arguments);
+    function sendFetch(input, init, url) {
+        return nativeFetch.call(this, input, init).then(response =>
+            observeResponse(response, url)
+        );
+    }
 
-            let nextInput = input;
-            let nextInit = init;
-            let info = null;
+    // Fetch interception.
+    window.fetch = function(input, init) {
+        if (!enabled) return nativeFetch.apply(this, arguments);
 
-            // Interception errors fall back to the untouched request. Network errors do not
-            // trigger a retry, which could otherwise submit the same conversation twice.
-            try {
-                let raw = null;
-                if (init && typeof init.body === "string") raw = init.body;
-                else if (init && init.body != null) {
-                    warn("Non-string conversation body; request passed through unchanged.");
-                } else if (isRequest) {
-                    raw = await input.clone().text();
+        const isRequest =
+            typeof Request !== "undefined" && input instanceof Request;
+
+        const url = getUrl(input);
+        const method = getMethod(input, init);
+        const patch = PATCH_CONVERSATION_REQUEST &&
+            isConversationPatch(url, method);
+        const observe = OBSERVE_PATTERN.test(url);
+        const rewriteInit = PATCH_INIT_DEFAULT && INIT_PATTERN.test(url);
+
+        if (!patch && !observe && !rewriteInit) {
+            return nativeFetch.apply(this, arguments);
+        }
+
+        // A string body supplied through fetch init.
+        if (typeof init?.body === "string") {
+            const modified = patch
+                ? patchBody(init.body, "fetch")
+                : init.body;
+            const nextInit = modified === init.body
+                ? init
+                : { ...init, body: modified };
+
+            return sendFetch.call(this, input, nextInit, url);
+        }
+
+        // A Request object may carry the body.
+        if (
+            patch &&
+            isRequest &&
+            (!init ||
+             !Object.prototype.hasOwnProperty.call(init, "body"))
+        ) {
+            return input.clone().text().then(body => {
+                const modified = patchBody(body, "fetch Request");
+                if (modified === body) {
+                    return sendFetch.call(this, input, init, url);
                 }
 
-                if (typeof raw === "string") {
-                    const patched = patchPayload(raw);
-                    if (patched) {
-                        info = patched.info;
-                        if (isRequest) nextInput = new Request(input, Object.assign({}, init || {}, { body: patched.body }));
-                        else nextInit = Object.assign({}, init || {}, { body: patched.body });
-                    }
-                }
-            } catch (error) {
-                warn("Interception failed; sending original request once:", error && error.name);
-                nextInput = input;
-                nextInit = init;
-                info = null;
-            }
+                const replacement = new Request(input, {
+                    ...(init || {}),
+                    body: modified
+                });
 
-            const response = await nativeFetch.call(this, nextInput, nextInit);
-            return info ? observeResponse(response, info) : response;
-        };
-    } else {
-        warn("fetch unavailable; no fetch hook installed.");
-    }
-
-    if (typeof XMLHttpRequest !== "undefined") {
-        const metadata = new WeakMap();
-        const originalOpen = XMLHttpRequest.prototype.open;
-        const originalSend = XMLHttpRequest.prototype.send;
-
-        XMLHttpRequest.prototype.open = function(method, url) {
-            metadata.set(this, { method: String(method || "GET").toUpperCase(), url: String(url) });
-            return originalOpen.apply(this, arguments);
-        };
-
-        XMLHttpRequest.prototype.send = function(raw) {
-            const meta = metadata.get(this);
-            if (!meta || !isConversationPost(meta.url, meta.method) || typeof raw !== "string") {
-                return originalSend.call(this, raw);
-            }
-
-            const patched = patchPayload(raw);
-            if (patched) {
-                raw = patched.body;
-                meta.info = patched.info;
-                this.addEventListener("load", () => {
-                    try {
-                        const text = this.responseType === "json" ? JSON.stringify(this.response) :
-                            ((this.responseType === "" || this.responseType === "text") ? this.responseText : "");
-                        reportResponse(this.status, text, meta.info);
-                    } catch (error) {
-                        warn("Could not inspect XHR response:", error && error.name);
-                    }
-                }, { once: true });
-            }
-            return originalSend.call(this, raw);
-        };
-    }
-
-    function mountPanel() {
-        if (document.getElementById("gpt-dil-model-pin-panel")) return;
-
-        const style = document.createElement("style");
-        style.textContent = [
-            "#gpt-dil-model-pin-panel,#gpt-dil-model-pin-toggle{position:fixed;right:14px;z-index:2147483647;color:#f3f4f6;background:#171923;border:1px solid #454a5a;border-radius:9px;font:12px/1.4 system-ui,sans-serif;box-shadow:0 5px 24px rgba(0,0,0,.35)}",
-            "#gpt-dil-model-pin-panel{bottom:14px;width:285px;padding:11px;box-sizing:border-box}",
-            "#gpt-dil-model-pin-panel .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:600}",
-            "#gpt-dil-model-pin-panel label{display:block;margin:7px 0 3px;color:#cbd0dc}",
-            "#gpt-dil-model-pin-panel input[type=text],#gpt-dil-model-pin-panel select{box-sizing:border-box;width:100%;padding:6px;color:#f3f4f6;background:#242838;border:1px solid #555d70;border-radius:5px}",
-            "#gpt-dil-model-pin-panel .check{display:flex;gap:7px;align-items:center;margin-top:7px}",
-            "#gpt-dil-model-pin-panel button,#gpt-dil-model-pin-toggle{padding:5px 8px;color:#f3f4f6;background:#30384d;border:1px solid #59647d;border-radius:5px;cursor:pointer}",
-            "#gpt-dil-model-pin-panel .status{margin-top:9px;padding-top:8px;border-top:1px solid #3b4050;color:#c5d5fa;overflow-wrap:anywhere}",
-            "#gpt-dil-model-pin-panel .note{margin-top:6px;color:#9da5b6;font-size:10px}",
-            "#gpt-dil-model-pin-toggle{display:none;bottom:14px;padding:8px 10px}"
-        ].join("");
-        document.documentElement.appendChild(style);
-
-        const cfg = config();
-        const panel = document.createElement("div");
-        panel.id = "gpt-dil-model-pin-panel";
-        panel.innerHTML =
-            '<div class="head"><span>GPT-DIL Model Pin</span><button type="button" data-hide>Hide</button></div>' +
-            '<label class="check"><input type="checkbox" data-key="enabled"> Enable model override</label>' +
-            '<label for="gpt-dil-model-value">Model slug</label>' +
-            '<input id="gpt-dil-model-value" type="text" data-key="model" spellcheck="false" autocomplete="off">' +
-            '<label for="gpt-dil-effort-value">Thinking effort</label>' +
-            '<select id="gpt-dil-effort-value" data-key="effort">' +
-            '<option value="native">Native / leave unchanged</option><option value="standard">standard</option><option value="extended">extended</option></select>' +
-            '<label class="check"><input type="checkbox" data-key="reasonHint"> Add system_hints: reason</label>' +
-            '<div class="status" data-status>Ready. No request modified yet.</div>' +
-            '<div class="note">Requested model is not proof of selection. Check the server-resolved model below.</div>';
-
-        const toggle = document.createElement("button");
-        toggle.id = "gpt-dil-model-pin-toggle";
-        toggle.type = "button";
-        toggle.textContent = "GPT-DIL Model";
-        document.documentElement.appendChild(panel);
-        document.documentElement.appendChild(toggle);
-
-        statusNode = panel.querySelector("[data-status]");
-        for (const field of panel.querySelectorAll("[data-key]")) {
-            const key = field.getAttribute("data-key");
-            if (field.type === "checkbox") field.checked = Boolean(cfg[key]);
-            else field.value = String(cfg[key] || DEFAULTS[key]);
-
-            field.addEventListener("change", () => {
-                const next = config();
-                next[key] = field.type === "checkbox" ? field.checked : field.value;
-                save(next);
-                setStatus(next.enabled ? "Settings saved; applies to the next conversation request." :
-                    "Override disabled; requests pass through unchanged.");
+                return sendFetch.call(this, replacement, undefined, url);
+            }).catch(error => {
+                console.warn("[ModelPin] Could not read Request body; sending original once:", error);
+                return sendFetch.call(this, input, init, url);
             });
         }
 
-        if (lastRequest) statusNode.textContent = "Last requested model: " + lastRequest.requestedModel;
-        panel.querySelector("[data-hide]").addEventListener("click", () => {
-            panel.style.display = "none";
-            toggle.style.display = "block";
+        if (patch && init?.body != null && typeof init.body !== "string") {
+            console.warn("[ModelPin] Non-string conversation body; request unchanged.");
+        }
+
+        return sendFetch.call(this, input, init, url);
+    };
+
+    // XMLHttpRequest interception.
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+        xhrInfo.set(this, {
+            method: String(method),
+            url: String(url)
         });
-        toggle.addEventListener("click", () => {
-            toggle.style.display = "none";
-            panel.style.display = "block";
-        });
+        return xhrOpen.call(this, method, url, ...rest);
+    };
+
+    XMLHttpRequest.prototype.send = function(body) {
+        const info = xhrInfo.get(this);
+        if (!enabled || !info) return xhrSend.call(this, body);
+
+        const method = info.method.toUpperCase();
+        const patch = PATCH_CONVERSATION_REQUEST &&
+            isConversationPatch(info.url, method);
+        const observe = OBSERVE_PATTERN.test(info.url);
+
+        if (observe) {
+            this.addEventListener("load", () => {
+                try {
+                    const responseText =
+                        typeof this.responseText === "string"
+                            ? this.responseText
+                            : (
+                                this.response &&
+                                typeof this.response === "object"
+                                    ? JSON.stringify(this.response)
+                                    : ""
+                            );
+
+                    inspectText(responseText, info.url + " XHR response");
+                } catch {
+                    // responseText can be unavailable for non-text response types.
+                }
+            }, { once: true });
+        }
+
+        if (patch) body = patchBody(body, "XHR");
+
+        // XHR init responses are observed but not rewritten. The fetch path handles
+        // the init response mutation used by the earlier Luna-default test script.
+        return xhrSend.call(this, body);
+    };
+
+    const wrappedFetch = window.fetch;
+
+    function stop() {
+        enabled = false;
+        if (window.fetch === wrappedFetch) window.fetch = nativeFetch;
+        XMLHttpRequest.prototype.open = xhrOpen;
+        XMLHttpRequest.prototype.send = xhrSend;
+        console.info("[ModelPin] Stopped.");
     }
 
-    if (typeof document !== "undefined") {
-        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountPanel, { once: true });
-        else mountPanel();
-    }
+    window[KEY] = {
+        target: TARGET_MODEL,
+        modelSlug: TARGET_MODEL_SLUG,
+        reasoning: TARGET_THINKING_EFFORT,
+        get enabled() {
+            return enabled;
+        },
+        toggle() {
+            enabled = !enabled;
+            console.info("[ModelPin] Enabled:", enabled);
+            return enabled;
+        },
+        stop
+    };
 
-    log("Hook active", VERSION, "default model:", DEFAULTS.model, "default effort:", DEFAULTS.effort);
+    console.info(
+        "[ModelPin] Installed. Init default:",
+        TARGET_MODEL,
+        "| model:",
+        TARGET_MODEL,
+        "| model_slug:",
+        TARGET_MODEL_SLUG,
+        "| effort:",
+        TARGET_THINKING_EFFORT,
+        "| reason hint:",
+        ENABLE_REASON_HINT
+    );
 })();

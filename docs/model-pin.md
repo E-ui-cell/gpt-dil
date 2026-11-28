@@ -1,29 +1,27 @@
-# Model pin and reasoning userscript
+# Luna model pin and reasoning userscript
 
-Install from the raw script URL:
+Install the raw Tampermonkey script:
 
 https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/model-pin.user.js
 
-The script adds a small settings panel to ChatGPT. It defaults to model slug `gpt-5.6-luna-wm`, effort `standard`, and no extra `reason` system hint. The model and effort can be changed in the panel. Settings are stored in the ChatGPT page's local storage.
+This script adds **no floating panel or custom controls**. Keep the separate native merged-model-picker userscript enabled; this script complements it.
 
-The hook only changes POST requests to:
-- `/backend-api/f/conversation`
-- `/backend-api/conversation`
+It combines the two earlier techniques:
+- Rewrite successful `/backend-api/conversation/init` JSON responses so `default_model_slug` and `intended_default_model_slug` are set to Luna WM.
+- Patch outgoing POSTs to `/backend-api/(f/)conversation` and `/prepare` using the existing top-level fields `model`, `model_slug`, and `thinking_effort`.
+- Optionally append the native `reason` value to `system_hints`.
+- Observe response model fields and reasoning metadata, including SSE records.
 
-Observed from the clean authenticated capture:
-- Native requests used top-level `model: "auto"`.
-- Native Think added `system_hints: ["reason"]`.
-- The server resolved Instant to `gpt-6` and Think to `gpt-6-t-mini`.
-- The catalogue advertised `gpt-5.6-luna-wm` and `gpt-5.6-terra-wm` with `standard` and `extended` effort options.
+Configuration is at the top of the script:
+- `TARGET_MODEL = "gpt-5.6-luna-wm"`
+- `TARGET_MODEL_SLUG = "auto"` (kept separate intentionally, as in the previous 3.2.0 script)
+- `TARGET_THINKING_EFFORT = "extended"`
+- `ENABLE_REASON_HINT = true`
 
-Experimental fields:
-- The capture did not show a native request with a forced Luna/Terra model slug.
-- The capture did not show a native `thinking_effort` request field.
-- The script sends the selected slug in the observed top-level `model` field and optionally adds `thinking_effort`. Acceptance must be verified from the server response.
-- The optional reason checkbox adds `"reason"` to `system_hints`. It is independent from the effort setting.
+The clean no-Tampermonkey capture showed native requests using `model: "auto"`; Think added `system_hints: ["reason"]`; the server resolved Instant to `gpt-6` and Think to `gpt-6-t-mini`. The model catalogue advertised Luna and Terra WM with `standard` and `extended` effort values.
 
-After each modified conversation request, the panel reports HTTP status, requested model, server-resolved model when present, and reasoning metadata. It does not display response text or reasoning content. A requested model is not proof that the backend selected it.
+The capture did **not** prove that a forced Luna slug or `thinking_effort` is accepted. Check the console's server metadata after sending a message. A requested model is not proof of the resolved model. The script does not bypass account limits or model availability.
 
-The userscript cannot bypass model availability, account limits, or plan restrictions. The ChatGPT web endpoint is private and unsupported; its payload contract may change. If it produces Cloudflare challenges or other browser problems, disable the script and test again without it.
+The conversation endpoint is private and unsupported; its payload can change. If Cloudflare challenges begin, disable this script and test without it. XHR conversation requests are patched and observed; `conversation/init` response rewriting is implemented for fetch, matching the earlier test script.
 
-Run tests with `node --test`. These tests validate local request mutation and metadata parsing only; they do not prove that ChatGPT accepts the custom fields.
+Run tests with `node --test tests/model-pin.test.mjs`. These tests validate local request/response mutation only, not server acceptance.
