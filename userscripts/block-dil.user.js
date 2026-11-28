@@ -2,7 +2,7 @@
 // @name         ChatGPT - Block DIL Rendering
 // @namespace    https://github.com/E-ui-cell/gpt-dil
 // @version      0.1.0
-// @description  Removes model_dil_v2 response metadata while preserving fallbackMarkdown.
+// @description  Removes executable DIL fields while retaining fallbackMarkdown.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
 // @sandbox      MAIN
@@ -33,9 +33,19 @@
         }
 
         if (
-            Object.prototype.hasOwnProperty.call(value, "model_dil_v2")
+            Object.prototype.hasOwnProperty.call(value, "model_dil_v2") &&
+            value.model_dil_v2 &&
+            typeof value.model_dil_v2 === "object"
         ) {
-            delete value.model_dil_v2;
+            const dil = value.model_dil_v2;
+            value.model_dil_v2 = {
+                ...(typeof dil.fallbackMarkdown === "string"
+                    ? { fallbackMarkdown: dil.fallbackMarkdown }
+                    : {}),
+                ...(dil.fallbackMarkdownVersion != null
+                    ? { fallbackMarkdownVersion: dil.fallbackMarkdownVersion }
+                    : {})
+            };
             removedCount++;
         }
 
@@ -181,5 +191,5 @@
         stop
     };
 
-    console.info("[DILBlock] Installed. Stripping model_dil_v2 from conversation responses.");
+    console.info("[DILBlock] Installed. Removing DIL code and constants; retaining fallbackMarkdown.");
 })();
