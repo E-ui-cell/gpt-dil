@@ -8,7 +8,8 @@ Small browser tools for ChatGPT.
 - Tampermonkey userscripts:
   - [Block DIL rendering](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/block-dil.user.js)
   - [Model pin and reasoning](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/model-pin.user.js)
-  - [Terminal Mode](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js)
+  - [Plain-text custom payload hook](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js)
+  - [Terminal Mode](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/terminal-mode.user.js)
 - Automated protocol capture
 - Windows installer
 
@@ -22,9 +23,13 @@ Install the [model-pin userscript](https://raw.githubusercontent.com/E-ui-cell/g
 
 See [model-pin documentation](docs/model-pin.md) and the [sanitized authenticated protocol baseline](evidence/chatgpt-web-model-baseline-2026-11-28.json).
 
+## Custom text payload
+
+Install the [plain-text userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js). Edit its CUSTOM_PAYLOAD_TEXT block to change the text appended to the latest user message.
+
 ## Terminal Mode
 
-Install the [Terminal Mode userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js). It appends an instruction to the latest user message asking ChatGPT to reply in plain, terminal-friendly text without Markdown formatting. It does not change response rendering or disable DIL; it is a request-side prompt instruction, not an output filter.
+Install the separate [Terminal Mode userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/terminal-mode.user.js). It appends a terminal-focused instruction to the latest user message and does not replace or modify the Plain Text Payload userscript.
 
 See [Terminal Mode documentation](docs/terminal-mode.md).
 
@@ -34,11 +39,11 @@ Daily Windows + Linux captures are published in [Releases](https://github.com/E-
 
 ## Local protocol
 
-Run .\Capture-Local.ps1 in PowerShell. This opens a separate Chrome profile for authenticated traffic capture, including DIL frame and MessagePort traffic. Sign in there and use ChatGPT. Captures stay on your PC.
+Run .\\Capture-Local.ps1 in PowerShell. This opens a separate Chrome profile for authenticated traffic capture, including DIL frame and MessagePort traffic. Sign in there and use ChatGPT. Captures stay on your PC.
 
 ## Install and update
 
-Run .\Install.ps1 -Force from the installed folder.
+Run .\\Install.ps1 -Force from the installed folder.
 
 ## Status
 
