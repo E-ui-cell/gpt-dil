@@ -1,8 +1,8 @@
 # Terminal Mode userscript
 
-Install the [Terminal Mode userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js) in Tampermonkey.
+Install the [Terminal Mode userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/terminal-mode.user.js) in Tampermonkey.
 
-The Tampermonkey script name remains "GPT-DIL - Plain Text Payload" so existing installations update in place.
+This is a separate Tampermonkey userscript named "GPT-DIL - Terminal Mode". It does not replace or modify the existing Plain Text Payload userscript.
 
 The script asks ChatGPT to answer in plain, terminal-friendly text: no Markdown headings, bullets, numbered lists, tables, emphasis, Markdown links, or fenced code blocks. Commands, paths, logs, configuration, and source code should be returned as raw text, with meaningful indentation preserved.
 
