@@ -1,0 +1,280 @@
+
+(async () => {
+  "use strict";
+
+  const MAX_PAGES = 500;
+  const PAGE_SIZE = 100;
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Identify the conversation from /c/<id> or /g/<gpt-id>/c/<id>
+  const parts = location.pathname.split("/").filter(Boolean);
+  const cIndex = parts.lastIndexOf("c");
+
+  if (cIndex < 0 || !parts[cIndex + 1]) {
+    throw new Error("Open a ChatGPT conversation first.");
+  }
+
+  const conversationId = decodeURIComponent(parts[cIndex + 1]);
+  const projectId = parts
+    .slice(0, cIndex)
+    .find(part => part.startsWith("g-p-"));
+
+  // Read the current authenticated session.
+  const sessionResponse = await fetch("/api/auth/session", {
+    credentials: "include",
+    cache: "no-store"
+  });
+
+  if (!sessionResponse.ok) {
+    throw new Error("Could not read the active ChatGPT session.");
+  }
+
+  const session = await sessionResponse.json();
+  const accessToken = session.accessToken;
+
+  if (!accessToken) {
+    throw new Error("No session access token was returned.");
+  }
+
+  // Decode only the account ID claim. Never print or save the token.
+  function decodeJwtPayload(token) {
+    const payload = token.split(".")[1];
+    if (!payload) return {};
+
+    const normalized = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(payload.length / 4) * 4, "=");
+
+    return JSON.parse(
+      new TextDecoder().decode(
+        Uint8Array.from(atob(normalized), c => c.charCodeAt(0))
+      )
+    );
+  }
+
+  const claims = decodeJwtPayload(accessToken);
+  const accountId =
+    session.account?.id ||
+    session.accountId ||
+    session.user?.account_id ||
+    claims["https://api.openai.com/auth"]?.chatgpt_account_id ||
+    claims.chatgpt_account_id;
+
+  const basePath =
+    `/backend-api/conversations/${encodeURIComponent(conversationId)}`;
+
+  // Fetch one page from the ChatGPT web backend.
+  async function getPage(url, routePath, routeTemplate) {
+    const headers = {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "X-OpenAI-Target-Path": routePath,
+      "X-OpenAI-Target-Route": routeTemplate
+    };
+
+    if (accountId) {
+      headers["ChatGPT-Account-ID"] = accountId;
+    }
+
+    if (projectId) {
+      headers["chatgpt-project-id"] = projectId;
+    }
+
+    const response = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      headers
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      throw new Error(
+        `Conversation request failed: HTTP ${response.status}\n${details}`
+      );
+    }
+
+    return response.json();
+  }
+
+  const collectedPages = [];
+  const collectedMessages = [];
+  const usedCursors = new Set();
+
+  let cursor = null;
+  let conversationInfo = null;
+  let complete = false;
+
+  console.info("Starting full conversation export");
+
+  for (let pageNumber = 0; pageNumber < MAX_PAGES; pageNumber++) {
+    const params = new URLSearchParams({
+      include_has_versions: "true",
+      num_turns: String(PAGE_SIZE)
+    });
+
+    let url;
+    let routePath;
+    let routeTemplate;
+
+    if (!cursor) {
+      url = `${basePath}?${params}`;
+      routePath = basePath;
+      routeTemplate = "/backend-api/conversations/{conversation_id}";
+    } else {
+      params.set("before", cursor);
+
+      url = `${basePath}/messages?${params}`;
+      routePath = `${basePath}/messages`;
+      routeTemplate =
+        "/backend-api/conversations/{conversation_id}/messages";
+    }
+
+    const page = await getPage(url, routePath, routeTemplate);
+
+    if (!Array.isArray(page.messages)) {
+      throw new Error("Unexpected response: no messages array.");
+    }
+
+    if (!conversationInfo) {
+      conversationInfo = page;
+    }
+
+    collectedPages.push({
+      page: pageNumber + 1,
+      messageCount: page.messages.length,
+      pageInfo: page.page_info || null
+    });
+
+    collectedMessages.unshift(...page.messages);
+
+    const pageInfo = page.page_info;
+
+    if (!pageInfo ||
+        typeof pageInfo.has_previous_page !== "boolean") {
+      throw new Error(
+        "Pagination status missing. Export stopped to avoid a partial file."
+      );
+    }
+
+    if (pageInfo.has_previous_page === false) {
+      complete = true;
+      break;
+    }
+
+    const nextCursor = pageInfo.start_cursor;
+
+    if (!nextCursor || usedCursors.has(nextCursor)) {
+      throw new Error("Pagination cursor missing or repeated.");
+    }
+
+    usedCursors.add(nextCursor);
+    cursor = nextCursor;
+
+    console.info(
+      `Retrieved page ${pageNumber + 1}: ${collectedMessages.length} messages`
+    );
+
+    await sleep(250);
+  }
+
+  if (!complete) {
+    throw new Error(
+      `Stopped at the ${MAX_PAGES}-page safety limit. No partial export downloaded.`
+    );
+  }
+
+  // Exclude internal-only messages and hidden reasoning.
+  // Keep ordinary messages, visible tool interactions and their metadata.
+  function isExportable(message) {
+    if (!message) return false;
+
+    const metadata = message.metadata || {};
+    const role = message.author?.role;
+    const contentType = message.content?.content_type;
+
+    if (
+      metadata.is_visually_hidden_from_conversation === true ||
+      message.is_visually_hidden_from_conversation === true
+    ) return false;
+
+    if (["system", "developer"].includes(role)) return false;
+
+    if ([
+      "thoughts",
+      "model_editable_context",
+      "user_editable_context"
+    ].includes(contentType)) return false;
+
+    return true;
+  }
+
+  // Remove duplicate message IDs if pages overlap.
+  const seenIds = new Set();
+
+  const messages = collectedMessages.filter(message => {
+    if (!isExportable(message)) return false;
+
+    const id = message.id;
+    if (id && seenIds.has(id)) return false;
+    if (id) seenIds.add(id);
+
+    return true;
+  });
+
+  const conversation = {
+    ...conversationInfo,
+    messages,
+    page_info: {
+      ...(conversationInfo.page_info || {}),
+      has_previous_page: false,
+      has_next_page: false
+    }
+  };
+
+  const output = {
+    export_format: "chatgpt-full-conversation",
+    exported_at: new Date().toISOString(),
+    source_url: location.href,
+    conversation_id: conversationId,
+    complete,
+    retrieval: {
+      endpoint: "backend-api/conversations",
+      page_size_turns: PAGE_SIZE,
+      pages_fetched: collectedPages.length,
+      server_message_count: collectedMessages.length,
+      exported_message_count: messages.length,
+      pages: collectedPages
+    },
+    conversation
+  };
+
+  // Safe filename.
+  const title = (conversation.title || conversationId)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+    .slice(0, 100);
+
+  const blob = new Blob(
+    [JSON.stringify(output, null, 2)],
+    { type: "application/json;charset=utf-8" }
+  );
+
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = objectUrl;
+  link.download = `${title}-full-session.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+
+  console.info("Export completed.", {
+    conversationId,
+    pages: collectedPages.length,
+    messages: messages.length,
+    complete
+  });
+})();
