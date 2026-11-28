@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT - Luna Model Pin + Reasoning
 // @namespace    https://github.com/E-ui-cell/gpt-dil
-// @version      0.2.0
+// @version      2.1
 // @description  Set the native ChatGPT default model and patch conversation model/reasoning fields.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
