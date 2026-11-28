@@ -44,6 +44,7 @@ jobs:
           node --check tools/dil-bridge-hook.js
           node --check tools/analyze-dil-bridge.mjs
           node --check userscripts/plain-text-payload.user.js
+          node --check userscripts/terminal-mode.user.js
           $testFiles = Get-ChildItem -Path tests -Filter "*.test.mjs" -File
           if (-not $testFiles) { throw "No tests found" }
           foreach ($testFile in $testFiles) {
