@@ -6,10 +6,15 @@ Small browser tools for ChatGPT.
 
 - uBlock Origin filters
 - Tampermonkey userscripts:
+  - [Block DIL rendering](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/block-dil.user.js)
   - [Model pin and reasoning](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/model-pin.user.js)
   - [Plain-text custom payload hook](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/plain-text-payload.user.js)
 - Automated protocol capture
 - Windows installer
+
+## Block DIL rendering
+
+Install the [block-dil userscript](https://raw.githubusercontent.com/E-ui-cell/gpt-dil/main/userscripts/block-dil.user.js). It removes `model_dil_v2` from JSON and SSE conversation responses while leaving `fallbackMarkdown` and the rest of the response intact. It adds no UI. This is an experimental response rewrite; verify the actual frontend behavior after installation.
 
 ## Model pin userscript
 
@@ -27,11 +32,11 @@ Daily Windows + Linux captures are published in [Releases](https://github.com/E-
 
 ## Local protocol
 
-Run .\Capture-Local.ps1 in PowerShell. This opens a separate Chrome profile for authenticated traffic capture, including DIL frame and MessagePort traffic. Sign in there and use ChatGPT. Captures stay on your PC.
+Run .\\Capture-Local.ps1 in PowerShell. This opens a separate Chrome profile for authenticated traffic capture, including DIL frame and MessagePort traffic. Sign in there and use ChatGPT. Captures stay on your PC.
 
 ## Install and update
 
-Run .\Install.ps1 -Force from the installed folder.
+Run .\\Install.ps1 -Force from the installed folder.
 
 ## Status
 
